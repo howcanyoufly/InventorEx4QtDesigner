@@ -30,11 +30,16 @@
 #include <Inventor/nodes/SoSphere.h>
 #include <Inventor/nodes/SoDepthBuffer.h>
 #include <Inventor/nodes/SoSpotLight.h>
+#include <Inventor/nodes/SoLightModel.h>
+#include <Inventor/nodes/SoCallback.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
 #include <Inventor/actions/SoWriteAction.h>
+#include <Inventor/elements/SoGLLazyElement.h>
+#include <Inventor/elements/SoCacheElement.h>
 
+#include <GL/gl.h>
 
 void errorHandlerCB(const SoError* err, void* data);
 void mousePressCB(void* userData, SoEventCallback* eventCB);
@@ -59,6 +64,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"twoCube", std::bind(&InventorEx::twoCube, this)},
         {"pickAction", std::bind(&InventorEx::pickAction, this)},
         {"superScene", std::bind(&InventorEx::superScene, this)},
+        {"glCallback", std::bind(&InventorEx::glCallback, this)},
+        {"oit", std::bind(&InventorEx::oit, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -71,6 +78,8 @@ InventorEx::InventorEx(int argc, char** argv)
     m_app = new QApplication(argc, argv);
     // Initializes Quarter (and implicitly also Coin and Qt
     Quarter::init();
+    // Remember to initialize the custom node!
+    SoOITNode::initClass();  
 
     m_mainwin = new QMainWindow();
 
@@ -722,7 +731,7 @@ ViewProviderBody
                     └── lineHiddenRoot (SoSeparator)
                         └── lineHiddenSet (SoIndexedLineSet)
 */
-void InventorEx::cubeBehind()
+void InventorEx::cubeBehind(SoSeparator* root)
 {
     float pts[8][3] = {
         { 0.0, 0.0, 0.0 },
@@ -776,7 +785,7 @@ void InventorEx::cubeBehind()
     SoMaterial* lineMaterial = new SoMaterial;
 
     // ViewProviderSoShow
-    m_root->addChild(bodySwitch);
+    root->addChild(bodySwitch);
     bodySwitch->addChild(body);
     // ViewProviderBody
     body->addChild(scale);
@@ -811,9 +820,9 @@ void InventorEx::cubeBehind()
     lineVisibleSet->coordIndex.setValues(0, 24, lineIndices);
 }
 
-void InventorEx::cubeFront()
+void InventorEx::cubeFront(SoSeparator* root)
 {
-    cubeBehind();
+    cubeBehind(root);
     SoSeparator* dataNode = (SoSeparator*)SoNode::getByName(SbName("DataNode"));// Returns the last node that was registered under name.
     // transform
     SoTransform* transform = new SoTransform;
@@ -824,8 +833,8 @@ void InventorEx::cubeFront()
 void InventorEx::twoCube()
 {
     // shape
-    cubeFront();
-    cubeBehind();
+    cubeFront(m_root);
+    cubeBehind(m_root);
 
 }
 
@@ -927,3 +936,393 @@ void InventorEx::pickAction()
     eventCB->addEventCallback(SoMouseButtonEvent::getClassTypeId()/*eventtype*/, mousePressCB, m_viewer->getSoRenderManager()->getSceneGraph()/*可以获取camera，但必须先setSceneGraph*/);
 }
 
+float floorObj[81][3];
+QuarterWidget* renderViewer = nullptr;
+SoPerspectiveCamera* renderCamera;
+// Build a scene with two objects and some light
+void InventorEx::buildScene()
+{
+    // Some light
+    m_root->addChild(new SoLightModel);
+    m_root->addChild(new SoDirectionalLight);
+
+    // A red cube translated to the left and down
+    SoTransform* myTrans = new SoTransform;
+    myTrans->translation.setValue(-2.0, -2.0, 0.0);
+    m_root->addChild(myTrans);
+
+    SoMaterial* myMtl = new SoMaterial;
+    myMtl->diffuseColor.setValue(1.0, 0.0, 0.0);
+    m_root->addChild(myMtl);
+
+    m_root->addChild(new SoCube);
+
+    // A blue sphere translated right
+    myTrans = new SoTransform;
+    myTrans->translation.setValue(4.0, 0.0, 0.0);
+    m_root->addChild(myTrans);
+
+    myMtl = new SoMaterial;
+    myMtl->diffuseColor.setValue(0.0, 0.0, 1.0);
+    m_root->addChild(myMtl);
+
+    m_root->addChild(new SoSphere);
+}
+template <class Type>
+inline void CoinSwap(Type& a, Type& b) { Type t = a; a = b; b = t; }
+
+// Bitmap representations of an "X", a "Y" and a "Z" for the axis cross.
+static GLubyte xbmp[] = { 0x11,0x11,0x0a,0x04,0x0a,0x11,0x11 };
+static GLubyte ybmp[] = { 0x04,0x04,0x04,0x04,0x0a,0x11,0x11 };
+static GLubyte zbmp[] = { 0x1f,0x10,0x08,0x04,0x02,0x01,0x1f };
+
+void drawArrow(void)
+{
+    glBegin(GL_LINES);
+    glVertex3f(0, 0, 0);
+    glVertex3f(1, 0, 0);
+    glEnd();
+    glDisable(GL_CULL_FACE);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(1.0, 0, 0);
+    glVertex3f(1.0 - 1.0 / 3, +0.5 / 4, 0);
+    glVertex3f(1.0 - 1.0 / 3, -0.5 / 4, 0);
+    glVertex3f(1.0, 0, 0);
+    glVertex3f(1.0 - 1.0 / 3, 0, +0.5 / 4);
+    glVertex3f(1.0 - 1.0 / 3, 0, -0.5 / 4);
+    glEnd();
+    glBegin(GL_QUADS);
+    glVertex3f(1.0 - 1.0 / 3, +0.5 / 4, 0);
+    glVertex3f(1.0 - 1.0 / 3, 0, +0.5 / 4);
+    glVertex3f(1.0 - 1.0 / 3, -0.5 / 4, 0);
+    glVertex3f(1.0 - 1.0 / 3, 0, -0.5 / 4);
+    glEnd();
+} // drawArrow()
+
+void drawAxisCross(void)
+{
+    // Store GL state.
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    GLfloat depthrange[2];
+    glGetFloatv(GL_DEPTH_RANGE, depthrange);
+    GLdouble projectionmatrix[16];
+    glGetDoublev(GL_PROJECTION_MATRIX, projectionmatrix);
+
+    glDepthFunc(GL_ALWAYS);
+    glDepthMask(GL_TRUE);
+    glDepthRange(0, 0);
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_COLOR_MATERIAL);
+    glDisable(GL_BLEND); // Kills transparency.
+
+    // Set the viewport in the OpenGL canvas. Dimensions are calculated
+    // as a percentage of the total canvas size.
+    //SbVec2s view = viewer->getGLSize();
+    SbVec2s view = renderViewer->getSoRenderManager()->getSize();
+    const int pixelarea =
+        //int(float(this->axiscrossSize)/100.0f * So@Gui@Min(view[0], view[1]));
+        int(25.0 / 100.0f * std::min(view[0], view[1]));
+#if 0 // middle of canvas
+    SbVec2s origin(view[0] / 2 - pixelarea / 2, view[1] / 2 - pixelarea / 2);
+#endif // middle of canvas
+#if 1 // lower right of canvas
+    SbVec2s origin(view[0] - pixelarea, 0);
+#endif // lower right of canvas
+    glViewport(origin[0], origin[1], pixelarea, pixelarea);
+
+    // Set up the projection matrix.
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    const float NEARVAL = 0.1f;
+    const float FARVAL = 10.0f;
+    const float dim = NEARVAL * tan(M_PI / 8.0f); // FOV is 45?(45/360 = 1/8)
+    glFrustum(-dim, dim, -dim, dim, NEARVAL, FARVAL);
+
+
+    // Set up the model matrix.
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    SbMatrix mx;
+    SoCamera* cam = renderCamera;
+
+    // If there is no camera (like for an empty scene, for instance),
+    // just use an identity rotation.
+    if (cam) { mx = cam->orientation.getValue(); }
+    else { mx = SbMatrix::identity(); }
+
+    mx = mx.inverse();
+    mx[3][2] = -3.5; // Translate away from the projection point (along z axis).
+    glLoadMatrixf((float*)mx);
+
+
+    // Find unit vector end points.
+    SbMatrix px;
+    glGetFloatv(GL_PROJECTION_MATRIX, (float*)px);
+    SbMatrix comb = mx.multRight(px);
+
+    SbVec3f xpos;
+    comb.multVecMatrix(SbVec3f(1, 0, 0), xpos);
+    xpos[0] = (1 + xpos[0]) * view[0] / 2;
+    xpos[1] = (1 + xpos[1]) * view[1] / 2;
+    SbVec3f ypos;
+    comb.multVecMatrix(SbVec3f(0, 1, 0), ypos);
+    ypos[0] = (1 + ypos[0]) * view[0] / 2;
+    ypos[1] = (1 + ypos[1]) * view[1] / 2;
+    SbVec3f zpos;
+    comb.multVecMatrix(SbVec3f(0, 0, 1), zpos);
+    zpos[0] = (1 + zpos[0]) * view[0] / 2;
+    zpos[1] = (1 + zpos[1]) * view[1] / 2;
+
+
+    // Render the cross.
+    {
+        glLineWidth(2.0);
+
+        enum { XAXIS, YAXIS, ZAXIS };
+        int idx[3] = { XAXIS, YAXIS, ZAXIS };
+        float val[3] = { xpos[2], ypos[2], zpos[2] };
+
+        // Bubble sort.. :-}
+        if (val[0] < val[1]) 
+        { 
+            CoinSwap(val[0], val[1]); CoinSwap(idx[0], idx[1]); 
+        }
+        if (val[1] < val[2]) 
+        { 
+            CoinSwap(val[1], val[2]); CoinSwap(idx[1], idx[2]); 
+        }
+        if (val[0] < val[1]) 
+        { 
+            CoinSwap(val[0], val[1]); CoinSwap(idx[0], idx[1]); 
+        }
+
+        for (int i = 0; i < 3; i++) 
+        {
+            glPushMatrix();
+            if (idx[i] == XAXIS) 
+            {                       // X axis.
+                glColor3f(0.500f, 0.125f, 0.125f);
+            }
+            else if (idx[i] == YAXIS) 
+            {                // Y axis.
+                glRotatef(90, 0, 0, 1);
+                glColor3f(0.125f, 0.500f, 0.125f);
+            }
+            else 
+            {                                     // Z axis.
+                glRotatef(-90, 0, 1, 0);
+                glColor3f(0.125f, 0.125f, 0.500f);
+            }
+            drawArrow();
+            glPopMatrix();
+        }
+    }
+
+    // Render axis notation letters ("X", "Y", "Z").
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, view[0], 0, view[1], -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    GLint unpack;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpack);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glColor3fv(SbVec3f(0.8f, 0.8f, 0.0f).getValue());
+
+    glRasterPos2d(xpos[0], xpos[1]);
+    glBitmap(8, 7, 0, 0, 0, 0, xbmp);
+    glRasterPos2d(ypos[0], ypos[1]);
+    glBitmap(8, 7, 0, 0, 0, 0, ybmp);
+    glRasterPos2d(zpos[0], zpos[1]);
+    glBitmap(8, 7, 0, 0, 0, 0, zbmp);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpack);
+    glPopMatrix();
+
+    // Reset original state.
+
+    // FIXME: are these 3 lines really necessary, as we push
+    // GL_ALL_ATTRIB_BITS at the start? 20000604 mortene.
+    glDepthRange(depthrange[0], depthrange[1]);
+    glMatrixMode(GL_PROJECTION);
+    glLoadMatrixd(projectionmatrix);
+
+    glPopAttrib();
+} // drawAxisCross()
+
+// Build the floor that will be rendered using OpenGL.
+void InventorEx::buildFloor()
+{
+    int a = 0;
+
+    for (float i = -5.0; i <= 5.0; i += 1.25) 
+    {
+        for (float j = -5.0; j <= 5.0; j += 1.25, a++) 
+        {
+            floorObj[a][0] = j;
+            floorObj[a][1] = 0.0;
+            floorObj[a][2] = i;
+        }
+    }
+}
+
+// Draw the lines that make up the floor, using OpenGL
+void drawFloor()
+{
+    int i;
+
+    glBegin(GL_LINES);
+    for (i = 0; i < 4; i++) 
+    {
+        glVertex3fv(floorObj[i * 18]);
+        glVertex3fv(floorObj[(i * 18) + 8]);
+        glVertex3fv(floorObj[(i * 18) + 17]);
+        glVertex3fv(floorObj[(i * 18) + 9]);
+    }
+
+    glVertex3fv(floorObj[i * 18]);
+    glVertex3fv(floorObj[(i * 18) + 8]);
+    glEnd();
+
+    glBegin(GL_LINES);
+    for (i = 0; i < 4; i++) 
+    {
+        glVertex3fv(floorObj[i * 2]);
+        glVertex3fv(floorObj[(i * 2) + 72]);
+        glVertex3fv(floorObj[(i * 2) + 73]);
+        glVertex3fv(floorObj[(i * 2) + 1]);
+    }
+    glVertex3fv(floorObj[i * 2]);
+    glVertex3fv(floorObj[(i * 2) + 72]);
+    glEnd();
+}
+
+// Callback routine to render the floor using OpenGL
+void callbackRoutine(void*, SoAction* action)
+{
+    // only render the floor during GLRender actions:
+    if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
+        return;
+
+    glPushMatrix();
+    glTranslatef(0.0f, -3.0f, 0.0f);
+    glColor3f(0.0f, 0.7f, 0.0f);
+    glLineWidth(2);
+    glDisable(GL_LIGHTING);  // so we don't have to set normals
+    drawFloor();
+    drawAxisCross();
+    glEnable(GL_LIGHTING);
+    glLineWidth(1);
+    glPopMatrix();
+
+    //With Inventor 2.1, it's necessary to reset SoGLLazyElement after
+    //making calls (such as glColor3f()) that affect material state.
+    //In this case, the diffuse color and light model are being modified,
+    //so the logical-or of DIFFUSE_MASK and LIGHT_MODEL_MASK is passed 
+    //to SoGLLazyElement::reset().  
+    //Additional information can be found in the publication
+    // "Open Inventor 2.1 Porting and Performance Tips"
+
+    SoState* state = action->getState();
+    SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
+    lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
+
+}
+
+void InventorEx::glCallback()
+{
+    // Initialize Inventor utilities
+    buildFloor();
+
+    // Build a simple scene graph, including a camera and
+    // a SoCallback node for performing some GL rendering.
+
+    //SoPerspectiveCamera *myCamera = new SoPerspectiveCamera;
+    renderCamera = new SoPerspectiveCamera;
+    renderCamera->position.setValue(0.0f, 0.0f, 5.0f);
+    renderCamera->heightAngle = (float)(M_PI / 2.0f);  // 90 degrees
+    renderCamera->nearDistance = 2.0f;
+    renderCamera->farDistance = 12.0f;
+    m_root->addChild(renderCamera);
+
+    SoCallback* callback = new SoCallback;
+    callback->setCallback(callbackRoutine);
+    m_root->addChild(callback);
+
+    buildScene();
+
+    // Initialize an Inventor Win RenderArea and draw the scene.
+    renderViewer = m_viewer;
+    m_viewer->setBackgroundColor(QColor(0.8f, 0.8f, 0.8f));
+}
+
+
+SO_NODE_SOURCE(SoOITNode);
+
+SoOITNode::SoOITNode() 
+{
+    SO_NODE_CONSTRUCTOR(SoOITNode);
+}
+
+void SoOITNode::initClass() 
+{
+    SO_NODE_INIT_CLASS(SoOITNode, SoSeparator, "Separator");
+    SO_ENABLE(SoGLRenderAction, SoCacheElement);
+}
+
+void SoOITNode::GLRender(SoGLRenderAction* action) 
+{
+    // 1. 绑定 OIT 资源 (例如头指针纹理，片段列表缓冲区等)
+
+    // 2. 执行 Build Phase 渲染，渲染所有子节点
+
+    // 3. 执行 Resolve Phase 渲染
+
+    // 4. 解绑 OIT 资源
+
+    glPushMatrix();
+    glTranslatef(0.0f, -3.0f, 0.0f);
+    glColor3f(0.0f, 0.7f, 0.0f);
+    glLineWidth(2);
+    glDisable(GL_LIGHTING);  // so we don't have to set normals
+    drawFloor();
+    drawAxisCross();
+    glEnable(GL_LIGHTING);
+    glLineWidth(1);
+    glPopMatrix();
+
+    SoState* state = action->getState();
+    SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
+    lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
+
+}
+
+void SoOITNode::GLRenderBelowPath(SoGLRenderAction* action) 
+{
+    this->GLRender(action);
+    SoSeparator::GLRenderBelowPath(action);
+}
+
+void SoOITNode::setupOITResources() {
+    // Initialize OpenGL resources for OIT.
+    // For instance, shader compilation, VBO generation, etc.
+    // You can refer to the OpenGL Red Book example for details.
+}
+
+void SoOITNode::cleanupOITResources() {
+    // Cleanup OpenGL resources.
+    // This includes deleting shaders, VBOs, textures, etc.
+}
+
+void InventorEx::oit()
+{
+    SoOITNode* oitNode = new SoOITNode;
+    m_root->addChild(oitNode);
+    oitNode->addChild(new SoCube);
+    renderViewer = m_viewer;
+}
