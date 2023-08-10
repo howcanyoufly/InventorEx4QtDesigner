@@ -1,0 +1,63 @@
+#Inventor V2.1 ascii
+
+Separator {
+     DEF PT0_DRAGGER DragPointDragger {
+        translation -4.5 -2.0  8.0
+    }
+    DEF PT1_DRAGGER DragPointDragger {
+        translation -2.0  1.0  8.0
+    }
+    DEF PT2_DRAGGER DragPointDragger {
+        translation  2.0 -3.0  8.0
+    }
+    DEF PT3_DRAGGER DragPointDragger {
+        translation -3.0  3.0  4.0
+    }
+    DEF PT4_DRAGGER DragPointDragger {
+        translation 0.0 -1.0  4.0
+    }
+    DEF PT5_DRAGGER DragPointDragger {
+        translation 2.0 -1.0 4.0
+    }
+    DEF PT6_DRAGGER DragPointDragger {
+        translation -5.0 -2.0 -2.0
+    }
+    DEF PT7_DRAGGER DragPointDragger {
+        translation -2.0 -4.0 -2.0
+    }
+    DEF PT8_DRAGGER DragPointDragger {
+        translation 2.0 -1.0 -2.0
+    }
+    Separator {
+        Material {
+            diffuseColor        1 0 0
+        }
+        Separator {
+            DrawStyle {
+                lineWidth       4
+            }
+            Complexity {
+                value   0.8
+            }
+            Coordinate3 {
+                point = Concatenate { type "MFVec3f"
+                                  input0 = USE PT0_DRAGGER . translation
+                                  input1 = USE PT1_DRAGGER . translation
+                                  input2 = USE PT2_DRAGGER . translation
+                                  input3 = USE PT3_DRAGGER . translation
+                                  input4 = USE PT4_DRAGGER . translation
+                                  input5 = USE PT5_DRAGGER . translation
+                                  input6 = USE PT6_DRAGGER . translation
+                                  input7 = USE PT7_DRAGGER . translation
+                                  input8 = USE PT8_DRAGGER . translation
+                          } . output
+            }
+            NurbsSurface {
+                numUControlPoints       3
+                numVControlPoints       3
+                uKnotVector      [0, 0, 0, 1, 1, 1]
+	        vKnotVector      [0, 0, 0, 1, 1, 1]
+            }
+        }
+    }
+}

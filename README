@@ -1,0 +1,49 @@
+============================================================================
+==                             INTRODUCTION                               ==
+============================================================================
+上次的界面实现依赖于sowin
+    HWND window = SoWin::init();
+    SoWinExaminerViewer* viewer = new SoWinExaminerViewer(window);
+这次用quarter实现
+    QApplication app(argc, argv);
+    Quarter::init();
+    QMainWindow* mainwin = new QMainWindow();
+    QuarterWidget* viewer = new QuarterWidget(mainwin);
+
+示例取自https://github.com/coin3d/quarter/tree/master/src/examples，其中各项目功能猜测如下：
+Example(minimal.cpp)
+这是一个最小示例，展示了如何使用基本的库功能。在这里，我添加了superscene的节点框架。
+
+DynamicUILoaderExample(dynamicui.cppandquarterviewer.qrc)
+这个示例展示了如何动态地加载UI。使用QUiLoader来从资源文件加载UI是常见的做法。
+
+DirectUILoaderExample(directui.cppandQuarterViewer.ui)
+直接加载UI的示例。与动态加载不同，它可能是编译时固定的UI。
+
+ExaminerExample(examiner.cppandquarterviewer.qrc)
+“Examiner”通常在3D可视化库中用作导航模式的名称，允许用户旋转、平移和缩放查看场景。这个示例可能展示了如何设置和使用这种导航模式。
+
+InheritUIExample(inheritui.cpp,QuarterViewer.cpp,QuarterViewer.h,andQuarterViewer.ui)
+这个示例可能展示了如何继承并扩展基本的UI类，为其添加新功能或定制其外观和行为。
+
+MDIExample(mdi.cpp,MdiMainWindow.cpp,MdiMainWindow.h,MdiQuarterWidget.cpp,andMdiQuarterWidget.h)
+MDI指的是多文档界面(MultipleDocumentInterface)。这是一种UI设计，允许在单个主窗口中打开多个子窗口。这个示例可能展示了如何使用库来创建MDI。
+
+SuperImpositionExample(superimposition.cpp)
+“叠加”或“覆盖”可能指的是将一个图像或场景叠加在另一个上面。这个示例存在渐变色背景。
+
+============================================================================
+==                           BUILDING ON WINDOWS                          ==
+============================================================================
+确保已经安装了CMake.
+安装Qt. 本地测试通过的版本是Qt 5.15.2，但也可以尝试其他版本。如果要使用Qt6，可能需要对代码进行一些调整。
+本项目依赖于Coin和Quarter库。对应的头文件和依赖文件已经打包在Coin3dPack_x64_Debug里。
+****设置QT_PLUGIN_PATH环境变量并重启。QT_PLUGIN_PATH={你的目录}\Coin3dPack_x64_Debug\plugins.****
+
+构建项目
+打开CMake(cmake-gui)。
+指定源代码目录（InventorEx4QtDesigner）和构建目录（InventorEx4QtDesigner\builds）(可选)。
+配置项目，选择生成器（如Visual Studio 17 2022）。
+配置完成且没有错误，点击"Generate"。
+打开构建出的解决方案。
+现在从Example项目开始认识Qt界面实现下的Coin吧。

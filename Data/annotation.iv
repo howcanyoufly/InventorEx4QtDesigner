@@ -1,0 +1,13 @@
+#Inventor V2.1 ascii
+
+Separator {
+      Separator {
+         Translation { translation 0 5 0 }
+         Cone {}
+      }
+      Annotation {
+		 LightModel { model BASE_COLOR }
+		 DrawStyle  { style LINES }
+                 Cube {}
+      }     
+ }
