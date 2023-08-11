@@ -1,9 +1,0 @@
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/Example.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/DynamicUILoaderExample.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/DirectUILoaderExample.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/ExaminerExample.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/InheritUIExample.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/MDIExample.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/SuperImpositionExample.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/ALL_BUILD.dir
-C:/Users/Admin/Documents/WorkingSpace/InventorEx4QtDesigner/builds/CMakeFiles/ZERO_CHECK.dir
