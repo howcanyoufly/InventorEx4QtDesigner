@@ -48,7 +48,7 @@ private:
     void twoCube();
     void pickAction();
 
-    void buildScene();
+    void buildScene(SoSeparator* root);
     void buildFloor();
     void glCallback();
     
@@ -57,6 +57,9 @@ private:
     // plugins
     void loadPickAndWrite();
     void loadErrorHandle();
+    void loadGLCallback();
+    void loadBackground(void);
+
 
     std::map<std::string, std::function<void(void)>> m_functions;
     std::set<std::string> m_delayedLoadNames;

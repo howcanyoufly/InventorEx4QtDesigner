@@ -1,5 +1,4 @@
 #include "InventorEx.h"
-
 #include <Inventor/SoPickedPoint.h>
 #include <Inventor/nodes/SoNode.h>
 #include <Inventor/nodes/SoCone.h>
@@ -32,6 +31,7 @@
 #include <Inventor/nodes/SoSpotLight.h>
 #include <Inventor/nodes/SoLightModel.h>
 #include <Inventor/nodes/SoCallback.h>
+#include <Inventor/nodes/SoBaseColor.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -69,6 +69,8 @@ InventorEx::InventorEx(int argc, char** argv)
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
+        {"_loadGLCallback", std::bind(&InventorEx::loadGLCallback, this)},
+        {"_loadBackground", std::bind(&InventorEx::loadBackground, this)},
     };
 
     m_delayedLoadNames = {
@@ -327,13 +329,25 @@ void InventorEx::superScene()
 void InventorEx::sphere()
 {
     SoSphere* sphere = new SoSphere;
-    m_root->addChild(sphere);
+    SoCube* cube = new SoCube;
+    SoDepthBuffer* depthBuf = new SoDepthBuffer;
+
+    depthBuf->test = false;
     sphere->radius = 0.5;
+
+    m_root->addChild(depthBuf);
+    m_root->addChild(sphere);
+    m_root->addChild(cube);
 }
 
 void InventorEx::cube()
 {
-    m_root->addChild(new SoSphere);
+    SoMaterial* material = new SoMaterial;
+    material->transparency = 1.0;
+    m_root->addChild(material);
+
+    m_root->addChild(new SoCube);
+
 }
 
 void InventorEx::engineSpin()
@@ -832,6 +846,10 @@ void InventorEx::cubeFront(SoSeparator* root)
 
 void InventorEx::twoCube()
 {
+    SoDepthBuffer* depthBuf = new SoDepthBuffer;
+    depthBuf->test = false;
+    m_root->addChild(depthBuf);
+
     // shape
     cubeFront(m_root);
     cubeBehind(m_root);
@@ -940,33 +958,33 @@ float floorObj[81][3];
 QuarterWidget* renderViewer = nullptr;
 SoPerspectiveCamera* renderCamera;
 // Build a scene with two objects and some light
-void InventorEx::buildScene()
+void InventorEx::buildScene(SoSeparator* root)
 {
     // Some light
-    m_root->addChild(new SoLightModel);
-    m_root->addChild(new SoDirectionalLight);
+    root->addChild(new SoLightModel);
+    root->addChild(new SoDirectionalLight);
 
     // A red cube translated to the left and down
     SoTransform* myTrans = new SoTransform;
     myTrans->translation.setValue(-2.0, -2.0, 0.0);
-    m_root->addChild(myTrans);
+    root->addChild(myTrans);
 
     SoMaterial* myMtl = new SoMaterial;
     myMtl->diffuseColor.setValue(1.0, 0.0, 0.0);
-    m_root->addChild(myMtl);
+    root->addChild(myMtl);
 
-    m_root->addChild(new SoCube);
+    root->addChild(new SoCube);
 
     // A blue sphere translated right
     myTrans = new SoTransform;
     myTrans->translation.setValue(4.0, 0.0, 0.0);
-    m_root->addChild(myTrans);
+    root->addChild(myTrans);
 
     myMtl = new SoMaterial;
     myMtl->diffuseColor.setValue(0.0, 0.0, 1.0);
-    m_root->addChild(myMtl);
+    root->addChild(myMtl);
 
-    m_root->addChild(new SoSphere);
+    root->addChild(new SoSphere);
 }
 template <class Type>
 inline void CoinSwap(Type& a, Type& b) { Type t = a; a = b; b = t; }
@@ -1254,7 +1272,7 @@ void InventorEx::glCallback()
     callback->setCallback(callbackRoutine);
     m_root->addChild(callback);
 
-    buildScene();
+    buildScene(m_root);
 
     // Initialize an Inventor Win RenderArea and draw the scene.
     renderViewer = m_viewer;
@@ -1299,7 +1317,6 @@ void SoOITNode::GLRender(SoGLRenderAction* action)
     SoState* state = action->getState();
     SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
     lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
-
 }
 
 void SoOITNode::GLRenderBelowPath(SoGLRenderAction* action) 
@@ -1321,8 +1338,86 @@ void SoOITNode::cleanupOITResources() {
 
 void InventorEx::oit()
 {
+    buildFloor();
+
     SoOITNode* oitNode = new SoOITNode;
     m_root->addChild(oitNode);
-    oitNode->addChild(new SoCube);
+    renderCamera = new SoPerspectiveCamera;
+    renderCamera->position.setValue(0.0f, 0.0f, 5.0f);
+    renderCamera->heightAngle = (float)(M_PI / 2.0f);
+    renderCamera->nearDistance = 2.0f;
+    renderCamera->farDistance = 12.0f;
+    oitNode->addChild(renderCamera);// 为什么放root下不行
+    //oitNode->addChild(new SoCube);
+    buildScene(oitNode);
     renderViewer = m_viewer;
+}
+
+void InventorEx::loadGLCallback()
+{
+    buildFloor();
+
+    renderCamera = new SoPerspectiveCamera;
+    renderCamera->position.setValue(0.0f, 0.0f, 5.0f);
+    renderCamera->heightAngle = (float)(M_PI / 2.0f);  // 90 degrees
+    renderCamera->nearDistance = 2.0f;
+    renderCamera->farDistance = 12.0f;
+    m_root->addChild(renderCamera);
+
+    SoCallback* callback = new SoCallback;
+    callback->setCallback(callbackRoutine);
+    m_root->addChild(callback);
+
+    renderViewer = m_viewer;
+}
+
+void InventorEx::loadBackground(void)
+{
+    // create a gradient background
+    SoSeparator* background = new SoSeparator;
+    SoBaseColor* color = new SoBaseColor;
+    SoOrthographicCamera* orthocam = new SoOrthographicCamera;
+
+    color->rgb.set1Value(0, SbColor(1.0, 0.0, 0.0));
+    color->rgb.set1Value(1, SbColor(1.0, 1.0, 0.0));
+
+    orthocam->height.setValue(1.0);
+    orthocam->viewportMapping = SoCamera::LEAVE_ALONE;
+    orthocam->nearDistance.setValue(0.0);
+    orthocam->farDistance.setValue(2.0);
+    orthocam->position = SbVec3f(0.0f, 0.0f, 1.0f);
+
+    SoMaterialBinding* mb = new SoMaterialBinding;
+    mb->value = SoMaterialBinding::PER_VERTEX_INDEXED;
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    coords->point.set1Value(0, SbVec3f(-0.5f, -0.5f, 0.0f));
+    coords->point.set1Value(1, SbVec3f(0.5f, -0.5f, 0.0f));
+    coords->point.set1Value(2, SbVec3f(0.5f, 0.5f, 0.0f));
+    coords->point.set1Value(3, SbVec3f(-0.5f, 0.5f, 0.0f));
+
+    SoIndexedFaceSet* ifs = new SoIndexedFaceSet;
+    ifs->coordIndex.set1Value(0, 0);
+    ifs->coordIndex.set1Value(1, 1);
+    ifs->coordIndex.set1Value(2, 2);
+    ifs->coordIndex.set1Value(3, 3);
+    ifs->coordIndex.set1Value(4, -1);
+
+    ifs->materialIndex.set1Value(0, 0);
+    ifs->materialIndex.set1Value(1, 0);
+    ifs->materialIndex.set1Value(2, 1);
+    ifs->materialIndex.set1Value(3, 1);
+    ifs->materialIndex.set1Value(4, -1);
+
+    SoLightModel* lm = new SoLightModel;
+    lm->model = SoLightModel::BASE_COLOR;
+
+    background->addChild(orthocam);
+    background->addChild(lm);
+    background->addChild(color);
+    background->addChild(mb);
+    background->addChild(coords);
+    background->addChild(ifs);
+
+    (void)m_viewer->getSoRenderManager()->addSuperimposition(background, SoRenderManager::Superimposition::BACKGROUND);// 前置(void)用于显式地忽略函数返回值
 }
