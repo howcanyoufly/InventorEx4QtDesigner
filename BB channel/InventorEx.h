@@ -44,6 +44,7 @@ private:
     void referenceCount();
     void indexedFaceSet();
     void cubeFront(SoSeparator* root);
+    void cubeFrontPlus(SoSeparator* root);
     void cubeBehind(SoSeparator* root);
     void twoCube();
     void pickAction();
@@ -53,6 +54,8 @@ private:
     void glCallback();
     
     void oit();
+
+    void simpleDepthTest();
 
     // plugins
     void loadPickAndWrite();

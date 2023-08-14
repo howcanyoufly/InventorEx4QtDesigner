@@ -32,6 +32,7 @@
 #include <Inventor/nodes/SoLightModel.h>
 #include <Inventor/nodes/SoCallback.h>
 #include <Inventor/nodes/SoBaseColor.h>
+#include <Inventor/nodes/SoPointSet.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -41,9 +42,14 @@
 
 #include <GL/gl.h>
 
+
+static int s_renderCountForDebug = 0;
+
 void errorHandlerCB(const SoError* err, void* data);
 void mousePressCB(void* userData, SoEventCallback* eventCB);
 SbBool writePickedPath(SoNode* root, const SbViewportRegion& viewport, const SbVec2s& cursorPosition);
+void enableColorMask(void*, SoAction* action);
+void disableColorMask(void*, SoAction* action);
 
 InventorEx::InventorEx(int argc, char** argv)
     : m_reset(false)
@@ -66,6 +72,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"superScene", std::bind(&InventorEx::superScene, this)},
         {"glCallback", std::bind(&InventorEx::glCallback, this)},
         {"oit", std::bind(&InventorEx::oit, this)},
+        {"simpleDepthTest", std::bind(&InventorEx::simpleDepthTest, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -84,6 +91,7 @@ InventorEx::InventorEx(int argc, char** argv)
     SoOITNode::initClass();  
 
     m_mainwin = new QMainWindow();
+    m_mainwin->resize(1200, 900); // 设置窗口的宽度为800像素，高度为600像素
 
     // Create a QuarterWidget for displaying a Coin scene graph
     m_viewer = new QuarterWidget(m_mainwin);
@@ -797,6 +805,8 @@ void InventorEx::cubeBehind(SoSeparator* root)
     SoIndexedLineSet* lineHiddenSet = new SoIndexedLineSet;
     SoMaterial* faceMaterial = new SoMaterial;
     SoMaterial* lineMaterial = new SoMaterial;
+    SoCallback* colorOff = new SoCallback;
+    SoCallback* colorOn = new SoCallback;
 
     // ViewProviderSoShow
     root->addChild(bodySwitch);
@@ -814,7 +824,9 @@ void InventorEx::cubeBehind(SoSeparator* root)
     staticWireFrame->addChild(lineVisbleRoot);
     staticWireFrame->addChild(lineHiddenRoot);
     faceRoot->addChild(faceMaterial);
+    faceRoot->addChild(colorOff);
     faceRoot->addChild(faceSet);
+    faceRoot->addChild(colorOn);
     lineVisbleRoot->addChild(lineMaterial);
     lineVisbleRoot->addChild(lineVisibleSet);
     lineHiddenRoot->addChild(lineHiddenSet);
@@ -825,13 +837,18 @@ void InventorEx::cubeBehind(SoSeparator* root)
     trasparencyTypeSwitch->whichChild = 0;
     renderModeSwitch->whichChild = 0;
 
-    faceMaterial->diffuseColor.setValue(0.0, 0.0, 0.0);
-    faceMaterial->transparency = 1.0;
+    faceMaterial->setName(SbName("FaceMaterial"));
+    faceMaterial->diffuseColor.setValue(1.0, 1.0, 0.0);
+    faceMaterial->transparency = 0.0;
     lineMaterial->diffuseColor.setValue(226, 171, 137);
 
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 48, faceIndices);
     lineVisibleSet->coordIndex.setValues(0, 24, lineIndices);
+
+    colorOff->setCallback(disableColorMask);
+    colorOn->setCallback(enableColorMask);
+
 }
 
 void InventorEx::cubeFront(SoSeparator* root)
@@ -844,15 +861,29 @@ void InventorEx::cubeFront(SoSeparator* root)
     transform->translation.setValue({ 0.5, 0.5, 0.5 });
 }
 
+void InventorEx::cubeFrontPlus(SoSeparator* root)
+{
+    cubeFront(root);
+    SoSeparator* dataNode = (SoSeparator*)SoNode::getByName(SbName("DataNode"));
+    // transform
+    SoTransform* transform = new SoTransform;
+    dataNode->insertChild(transform, 0);
+    transform->translation.setValue({ 0.5, 0.5, 0.5 });
+}
+
+
 void InventorEx::twoCube()
 {
-    SoDepthBuffer* depthBuf = new SoDepthBuffer;
-    depthBuf->test = false;
-    m_root->addChild(depthBuf);
-
     // shape
-    cubeFront(m_root);
     cubeBehind(m_root);
+    //SoMaterial* faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
+    //faceMaterial->diffuseColor.setValue(1.0, 1.0, 0.0);
+    //faceMaterial->transparency = 0.5;
+    cubeFront(m_root);
+    //faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
+    //faceMaterial->diffuseColor.setValue(1.0, 0.0, 0.0);
+    //faceMaterial->transparency = 0.0;
+
 
 }
 
@@ -1227,6 +1258,7 @@ void callbackRoutine(void*, SoAction* action)
     if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
         return;
 
+    s_renderCountForDebug++;
     glPushMatrix();
     glTranslatef(0.0f, -3.0f, 0.0f);
     glColor3f(0.0f, 0.7f, 0.0f);
@@ -1246,6 +1278,21 @@ void callbackRoutine(void*, SoAction* action)
     //Additional information can be found in the publication
     // "Open Inventor 2.1 Porting and Performance Tips"
 
+    /*
+    SoLazyElement类：
+    SoLazyElement类用于处理材质和形状的属性。与其名称相对应，SoGLLazyElement是一个在将内容发送到OpenGL时懒惰的元素。
+    除非调用SoGLLazyElement::send()，否则更改不会被发送到OpenGL。这意味着你可以多次改变某些属性的状态，但状态只会被发送到OpenGL一次。
+    创建Coin中的新形状节点时：
+    当你在Coin中创建一个新的形状节点时，修改OpenGL的散射颜色是一个常见的操作。你可以使用几种方法将颜色发送到OpenGL。
+    1.如果你不打算在节点外部使用颜色，你可以使用纯OpenGL发送它。
+    2.你还可以在元素中设置颜色，然后使用SoGLLazyElement::send(state, SoLazyElement::DIFFUSE_MASK)强制发送。
+    3.但是，当创建一个扩展形状节点时，建议在堆栈上创建一个SoMaterialBundle实例。
+    如果在使用新颜色更新SoLazyElement之后创建此实例，则在调用SoMaterialBundle::sendFirst()时，新颜色将被发送到OpenGL。
+    这次调用还会更新所有其他懒惰的OpenGL状态。
+    实际上，创建形状节点时，必须使用SoMaterialBundle::sendFirst()或调用SoGLLazyElement::send(state, SoLazyElement::ALL_MASK)。
+    如果你决定使用glColor*()将颜色发送到OpenGL，你应该通过调用SoGLLazyElement::reset(state, SoLazyElement::DIFFUSE_MASK)通知SoGLLazyElement。
+    这将通知SoGLLazyElement当前的OpenGL散射颜色未知。
+    */
     SoState* state = action->getState();
     SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
     lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
@@ -1378,8 +1425,8 @@ void InventorEx::loadBackground(void)
     SoBaseColor* color = new SoBaseColor;
     SoOrthographicCamera* orthocam = new SoOrthographicCamera;
 
-    color->rgb.set1Value(0, SbColor(1.0, 0.0, 0.0));
-    color->rgb.set1Value(1, SbColor(1.0, 1.0, 0.0));
+    color->rgb.set1Value(0, SbColor(0.05, 0.05, 0.2)); // 深蓝色
+    color->rgb.set1Value(1, SbColor(0.0, 0.0, 0.0));   // 黑色
 
     orthocam->height.setValue(1.0);
     orthocam->viewportMapping = SoCamera::LEAVE_ALONE;
@@ -1412,6 +1459,25 @@ void InventorEx::loadBackground(void)
     SoLightModel* lm = new SoLightModel;
     lm->model = SoLightModel::BASE_COLOR;
 
+    // 画星星
+    SoCoordinate3* starCoords = new SoCoordinate3;
+    SoPointSet* stars = new SoPointSet;
+    const int STAR_COUNT = 200;  // 你可以调整这个数值来增加或减少星星数量
+    for (int i = 0; i < STAR_COUNT; i++) {
+        float x = (rand() % 1000 - 500) / 1000.0f;
+        float y = (rand() % 1000 - 500) / 1000.0f;
+        starCoords->point.set1Value(i, SbVec3f(x, y, 0.0f));
+    }
+
+    // 路灯
+    SoMaterial* lightMaterial = new SoMaterial;
+    lightMaterial->diffuseColor.setValue(1.0, 0.5, 0.0); // 橙色
+    lightMaterial->transparency.setValue(0.7);  // 根据需要调整透明度
+
+    SoCone* lightCone = new SoCone;
+    lightCone->bottomRadius.setValue(0.5);
+    lightCone->height.setValue(0.5);
+
     background->addChild(orthocam);
     background->addChild(lm);
     background->addChild(color);
@@ -1419,5 +1485,75 @@ void InventorEx::loadBackground(void)
     background->addChild(coords);
     background->addChild(ifs);
 
+    // 添加星星
+    background->addChild(starCoords);
+    background->addChild(stars);
+
+    // 添加路灯的光芒
+    background->addChild(lightMaterial);
+    background->addChild(lightCone);
+
     (void)m_viewer->getSoRenderManager()->addSuperimposition(background, SoRenderManager::Superimposition::BACKGROUND);// 前置(void)用于显式地忽略函数返回值
+}
+
+
+void enableColorMask(void*, SoAction* action)
+{
+    if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
+        return;
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    s_renderCountForDebug++;
+};
+
+
+void disableColorMask(void*, SoAction* action)
+{
+    if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
+        return;
+    glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_FALSE);
+    s_renderCountForDebug++;
+}
+
+
+void InventorEx::simpleDepthTest()
+{
+    float pts[6][3] = {
+        // face
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+        // line
+        { 0.5,-1.0, 0.0 },
+        { 0.5, 2.0, 0.0 },
+    };
+    int32_t faceIndices[8] = {
+        0, 1, 2, SO_END_FACE_INDEX,
+        0, 2, 3, SO_END_FACE_INDEX,
+    };
+
+    int32_t lineIndices[3] = {
+        4, 5, SO_END_LINE_INDEX
+    };
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoIndexedLineSet* lineSet = new SoIndexedLineSet;
+    SoCallback* colorOff = new SoCallback;
+    SoCallback* colorOn = new SoCallback;
+
+
+
+    m_root->addChild(coords);
+    m_root->addChild(colorOff);
+    m_root->addChild(faceSet);
+    m_root->addChild(colorOn);
+    m_root->addChild(lineSet);
+
+    coords->point.setValues(0, 6, pts);
+    faceSet->coordIndex.setValues(0, 8, faceIndices);
+    lineSet->coordIndex.setValues(0, 3, lineIndices);
+    colorOff->setCallback(disableColorMask);
+    colorOn->setCallback(enableColorMask);
+
 }
