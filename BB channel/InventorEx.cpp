@@ -1,4 +1,5 @@
 #include "InventorEx.h"
+
 #include <Inventor/SoPickedPoint.h>
 #include <Inventor/nodes/SoNode.h>
 #include <Inventor/nodes/SoCone.h>
@@ -42,6 +43,9 @@
 
 #include <GL/gl.h>
 
+#include "SoGradientBackground.h"
+#include "SoColorMask.h"
+
 
 static int s_renderCountForDebug = 0;
 
@@ -73,6 +77,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"glCallback", std::bind(&InventorEx::glCallback, this)},
         {"oit", std::bind(&InventorEx::oit, this)},
         {"simpleDepthTest", std::bind(&InventorEx::simpleDepthTest, this)},
+        {"whyNotRerender", std::bind(&InventorEx::whyNotRerender, this)},
+        {"hiddenLine", std::bind(&InventorEx::hiddenLine, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -89,9 +95,11 @@ InventorEx::InventorEx(int argc, char** argv)
     Quarter::init();
     // Remember to initialize the custom node!
     SoOITNode::initClass();  
+    SoGradientBackground::initClass();
+    SoColorMask::initClass();
 
     m_mainwin = new QMainWindow();
-    m_mainwin->resize(1200, 900); // 设置窗口的宽度为800像素，高度为600像素
+    m_mainwin->resize(1200, 900);
 
     // Create a QuarterWidget for displaying a Coin scene graph
     m_viewer = new QuarterWidget(m_mainwin);
@@ -129,6 +137,7 @@ void InventorEx::resetScene()
     m_mainwin = nullptr;
 
     m_mainwin = new QMainWindow();
+    m_mainwin->resize(1200, 900);
     m_viewer = new QuarterWidget(m_mainwin);
 
     m_viewer->setNavigationModeFile();
@@ -824,9 +833,9 @@ void InventorEx::cubeBehind(SoSeparator* root)
     staticWireFrame->addChild(lineVisbleRoot);
     staticWireFrame->addChild(lineHiddenRoot);
     faceRoot->addChild(faceMaterial);
-    faceRoot->addChild(colorOff);
+    //faceRoot->addChild(colorOff);
     faceRoot->addChild(faceSet);
-    faceRoot->addChild(colorOn);
+    //faceRoot->addChild(colorOn);
     lineVisbleRoot->addChild(lineMaterial);
     lineVisbleRoot->addChild(lineVisibleSet);
     lineHiddenRoot->addChild(lineHiddenSet);
@@ -876,13 +885,13 @@ void InventorEx::twoCube()
 {
     // shape
     cubeBehind(m_root);
-    //SoMaterial* faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
-    //faceMaterial->diffuseColor.setValue(1.0, 1.0, 0.0);
-    //faceMaterial->transparency = 0.5;
+    SoMaterial* faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
+    faceMaterial->diffuseColor.setValue(1.0, 1.0, 0.0);
+    faceMaterial->transparency = 0.0;
     cubeFront(m_root);
-    //faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
-    //faceMaterial->diffuseColor.setValue(1.0, 0.0, 0.0);
-    //faceMaterial->transparency = 0.0;
+    faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
+    faceMaterial->diffuseColor.setValue(0.0, 1.0, 1.0);
+    faceMaterial->transparency = 0.0;
 
 
 }
@@ -1497,11 +1506,13 @@ void InventorEx::loadBackground(void)
 }
 
 
+GLboolean masks[4];
+
 void enableColorMask(void*, SoAction* action)
 {
     if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
         return;
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glColorMask(masks[0], masks[1], masks[2], masks[3]);
     s_renderCountForDebug++;
 };
 
@@ -1510,7 +1521,9 @@ void disableColorMask(void*, SoAction* action)
 {
     if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
         return;
-    glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+    glGetBooleanv(GL_COLOR_WRITEMASK, masks);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
     s_renderCountForDebug++;
 }
 
@@ -1557,3 +1570,122 @@ void InventorEx::simpleDepthTest()
     colorOn->setCallback(enableColorMask);
 
 }
+
+void InventorEx::whyNotRerender()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
+    };
+    int32_t lineIndices[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoIndexedLineSet* lineSet = new SoIndexedLineSet;
+    SoCallback* colorOff = new SoCallback;
+    SoCallback* colorOn = new SoCallback;
+    SoIndexedFaceSet* faceSet2 = new SoIndexedFaceSet;
+    SoIndexedLineSet* lineSet2 = new SoIndexedLineSet;
+    SoCallback* colorOff2 = new SoCallback;
+    SoCallback* colorOn2 = new SoCallback;
+    SoTranslation* translation = new SoTranslation;
+
+    m_root->renderCaching = SoSeparator::OFF;
+    m_root->addChild(coords);
+    m_root->addChild(colorOff);
+    m_root->addChild(faceSet);
+    m_root->addChild(colorOn);
+    m_root->addChild(lineSet);
+    m_root->addChild(translation);
+    m_root->addChild(colorOff2);
+    m_root->addChild(faceSet2);
+    m_root->addChild(colorOn2);
+    m_root->addChild(lineSet2);
+
+    m_root->addChild(new SoSphere);
+
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 48, faceIndices);
+    lineSet->coordIndex.setValues(0, 24, lineIndices);
+
+    colorOff->setCallback(disableColorMask);
+    colorOn->setCallback(enableColorMask);
+
+    faceSet2->coordIndex.setValues(0, 48, faceIndices);
+    lineSet2->coordIndex.setValues(0, 24, lineIndices);
+
+    colorOff2->setCallback(disableColorMask);
+    colorOn2->setCallback(enableColorMask);
+
+    translation->translation.setValue(1.0, 1.0, 1.0);
+
+}
+
+void InventorEx::hiddenLine()
+{
+    m_root->addChild(new SoGradientBackground);
+
+    SoSeparator* firstPassSeparator = new SoSeparator;
+    m_root->addChild(firstPassSeparator);
+
+    // For the first pass, use a ColorMask with all fields to FALSE in order to
+    // draw only into the depth buffer
+    SoColorMask* colorMask = new SoColorMask;
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+    firstPassSeparator->addChild(colorMask);
+
+    twoCube();
+
+    SoSeparator* secondPassSeparator = new SoSeparator;
+    m_root->addChild(secondPassSeparator);
+
+    // For the second pass, draw the model in BASE_COLOR mode and DrawStyle LINES
+    SoLightModel* lightModel = new SoLightModel;
+    lightModel->model = SoLightModel::BASE_COLOR;
+    secondPassSeparator->addChild(lightModel);
+
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    drawStyle->style = SoDrawStyle::LINES;
+    secondPassSeparator->addChild(drawStyle);
+
+    // Add a DepthOffset to make sure the lines will always be drawn in front
+    // of the model
+    //SoDepthOffset* depthOffset = new SoDepthOffset;
+    //secondPassSeparator->addChild(depthOffset);
+    SoPolygonOffset* polygonOffset = new SoPolygonOffset;
+    secondPassSeparator->addChild(polygonOffset);
+
+    twoCube();
+
+}
+

@@ -132,9 +132,13 @@
   <ItemGroup>
     <ClCompile Include="InventorEx.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="SoColorMask.cpp" />
+    <ClCompile Include="SoGradientBackground.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h" />
+    <ClInclude Include="SoColorMask.h" />
+    <ClInclude Include="SoGradientBackground.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

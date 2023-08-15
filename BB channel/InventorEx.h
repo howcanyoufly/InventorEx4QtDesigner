@@ -57,6 +57,8 @@ private:
 
     void simpleDepthTest();
 
+    void whyNotRerender();
+    void hiddenLine();
     // plugins
     void loadPickAndWrite();
     void loadErrorHandle();

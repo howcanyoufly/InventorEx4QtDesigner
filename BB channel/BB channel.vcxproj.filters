@@ -21,9 +21,21 @@
     <ClCompile Include="InventorEx.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="SoGradientBackground.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SoColorMask.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SoGradientBackground.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SoColorMask.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
