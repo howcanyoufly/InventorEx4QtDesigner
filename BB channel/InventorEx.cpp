@@ -45,6 +45,7 @@
 
 #include "SoGradientBackground.h"
 #include "SoColorMask.h"
+#include "Inventor/actions/SoSearchAction.h"
 
 
 static int s_renderCountForDebug = 0;
@@ -168,8 +169,22 @@ void InventorEx::run(std::string& funcName)
             std::cout << match << '\n';
         }
         std::getline(std::cin, funcName);
-        run(funcName); // 再次输入
-        return;
+        for (auto it = matches.begin(); it != matches.end();) 
+        {
+            if (-1 == it->find(funcName)) 
+            {
+                it = matches.erase(it);
+            }
+            else 
+            {
+                ++it;
+            }
+        }
+        if (matches.size() > 1 || matches.size() == 0)
+        {
+            run(funcName);
+            return;
+        }
     }
 
     if (m_reset)
@@ -855,8 +870,8 @@ void InventorEx::cubeBehind(SoSeparator* root)
     faceSet->coordIndex.setValues(0, 48, faceIndices);
     lineVisibleSet->coordIndex.setValues(0, 24, lineIndices);
 
-    colorOff->setCallback(disableColorMask);
-    colorOn->setCallback(enableColorMask);
+    //colorOff->setCallback(disableColorMask);
+    //colorOn->setCallback(enableColorMask);
 
 }
 
@@ -1737,3 +1752,245 @@ void InventorEx::hiddenLine()
     secondPassSeparator->addChild(lineSet2);
 }
 
+/*
+    └── staticWireFrame (SoSeparator)
+        ├── material (SoMaterial)
+        ├── offset (SoPolygonOffset)
+        ├── faceSwitch (SoSwitch)
+        |   └── faceRoot (SoSeparator)
+        |       ├── faceStyle (SoDrawStyle)
+        |       ├── faceNormal (SoNormal)
+        |       ├── normalBinding (SoNormalBinding)
+        |       ├── materialSwitch (SoSwitch)
+        |       |   └── transparentMaterial (SoMaterial)
+        |       └── faceSet (SoIndexedFaceSet)
+        └── lineSwitch (SoSwitch)
+            └── lineRoot (SoSeparator)
+                └── lineSet (SoIndexedLineSet)
+*/
+
+#define CREATE_NODE(type, name) \
+    type* name = new type; \
+    name->setName(#name);
+
+#define ADD_CHILD(parent, child) \
+    parent->addChild(child);
+
+SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
+{
+    CREATE_NODE(SoSwitch, bodySwitch)
+    CREATE_NODE(SoSeparator, body)
+    CREATE_NODE(SoScale, scale)
+    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+    CREATE_NODE(SoTransparencyType, trasparencyType)
+    CREATE_NODE(SoSeparator, dataNode)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoSwitch, renderModeSwitch)
+    CREATE_NODE(SoSeparator, shadeWithEdge)
+    CREATE_NODE(SoSeparator, shadeWithoutEdge)
+    CREATE_NODE(SoSeparator, transluency)
+    CREATE_NODE(SoSeparator, staticWireframe)
+    CREATE_NODE(SoSeparator, wireframeWithoutHidden)
+    CREATE_NODE(SoSwitch, faceSwitch)
+    CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoSwitch, lineSwitch)
+    CREATE_NODE(SoSeparator, lineRoot)
+    CREATE_NODE(SoMaterial, material)
+    CREATE_NODE(SoPolygonOffset, offset)
+    CREATE_NODE(SoDrawStyle, faceStyle)
+    CREATE_NODE(SoNormal, faceNormal)
+    CREATE_NODE(SoNormalBinding, normalBinding)
+    CREATE_NODE(SoSwitch, materialSwitch)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+    CREATE_NODE(SoMaterial, transparentMaterial)
+    CREATE_NODE(SoIndexedLineSet, lineSet)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships = 
+    {
+        {bodySwitch, body},
+        {body, scale},
+        {body, trasparencyTypeSwitch},
+        {body, dataNode},
+        {trasparencyTypeSwitch, trasparencyType},
+        {dataNode, coords},
+        {dataNode, renderModeSwitch},
+        {renderModeSwitch, shadeWithEdge},
+        {renderModeSwitch, shadeWithoutEdge},
+        {renderModeSwitch, transluency},
+        {renderModeSwitch, staticWireframe},
+        {renderModeSwitch, wireframeWithoutHidden},
+        {staticWireframe, material},
+        {staticWireframe, offset},
+        {staticWireframe, faceSwitch},
+        {staticWireframe, lineSwitch},
+        {faceSwitch, faceRoot},
+        {lineSwitch, lineRoot},
+        {faceRoot, faceStyle},
+        {faceRoot, faceNormal},
+        {faceRoot, normalBinding},
+        {faceRoot, materialSwitch},
+        {faceRoot, faceSet},
+        {materialSwitch, transparentMaterial},
+        {lineRoot, lineSet}
+    };
+    for (const auto& relationship : relationships) 
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    bodySwitch->whichChild = 0;
+    trasparencyTypeSwitch->whichChild = 0;
+    renderModeSwitch->whichChild = 3;
+    faceSwitch->whichChild = 0;
+    lineSwitch->whichChild = 0;
+
+    coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
+    faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
+    lineSet->coordIndex.setValues(0, data.lineIndices.size(), data.lineIndices.data());
+
+    return bodySwitch;
+}
+
+void InventorEx::hiddenLine2()
+{
+    float pts[][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    float pts2[][3] = {
+        { 0.5, 0.5, 0.5 },
+        { 1.5, 0.5, 0.5 },
+        { 1.5, 1.5, 0.5 },
+        { 0.5, 1.5, 0.5 },
+        { 0.5, 0.5, 1.5 },
+        { 1.5, 0.5, 1.5 },
+        { 1.5, 1.5, 1.5 },
+        { 0.5, 1.5, 1.5 },
+    };
+
+    ShapeData data;
+    data.points.assign(&pts[0], &pts[8]);
+    data.faceIndices = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
+
+    };
+    data.lineIndices = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    ShapeData data2;
+    data2.points.assign(&pts2[0], &pts2[8]);
+    data2.faceIndices = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
+    };
+    data2.lineIndices = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    CREATE_NODE(SoSeparator, firstPassSeparator)
+    CREATE_NODE(SoSeparator, face)
+    CREATE_NODE(SoSeparator, secondPassSeparator)
+    CREATE_NODE(SoSeparator, line)
+    CREATE_NODE(SoColorMask, colorMask)
+    CREATE_NODE(SoColorMask, colorMask2)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
+    CREATE_NODE(SoLightModel, lightModel)    
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, new SoGradientBackground},
+        {m_root, firstPassSeparator},
+        {m_root, secondPassSeparator},
+        {firstPassSeparator, colorMask},
+        {firstPassSeparator, polygonOffset},
+        {firstPassSeparator, face},
+        {secondPassSeparator, colorMask2},
+        {secondPassSeparator, lightModel},
+        {secondPassSeparator, line},
+        {face, assembleBodyScene(data)},
+        {face, assembleBodyScene(data2)},
+        {line, assembleBodyScene(data)},
+        {line, assembleBodyScene(data2)},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    // 在face下找lineSwitch
+    SoSearchAction searchAction;
+    searchAction.setName("lineSwitch");
+    searchAction.setSearchingAll(TRUE);
+    searchAction.apply(face);
+    SoPathList& resultList = searchAction.getPaths();
+    for (int i = 0; i < resultList.getLength(); i++) 
+    {
+        SoNode* node = resultList[i]->getTail();
+        if (node && node->isOfType(SoSwitch::getClassTypeId())) 
+        {
+            SoSwitch* lineSwitchNode = dynamic_cast<SoSwitch*>(node);
+            lineSwitchNode->whichChild = SO_SWITCH_NONE;
+        }
+    }
+
+    // 在line下找faceSwitch
+    searchAction.setName("faceSwitch");
+    searchAction.setSearchingAll(TRUE);
+    searchAction.apply(line);
+    resultList = searchAction.getPaths();
+    for (int i = 0; i < resultList.getLength(); i++)
+    {
+        SoNode* node = resultList[i]->getTail();
+        if (node && node->isOfType(SoSwitch::getClassTypeId()))
+        {
+            SoSwitch* faceSwitchNode = dynamic_cast<SoSwitch*>(node);
+            faceSwitchNode->whichChild = SO_SWITCH_NONE;
+        }
+    }
+
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+
+    lightModel->model = SoLightModel::BASE_COLOR;
+
+}

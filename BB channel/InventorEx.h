@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include <string>
+#include <array>
 #include <vector>
 #include <set>
 #include <map>
@@ -9,6 +10,7 @@
 
 #include <Inventor/nodes/SoSeparator.h>
 #include <Inventor/nodes/SoSubNode.h>
+#include <Inventor/nodes/SoSwitch.h>
 
 #include <Quarter/Quarter.h>
 #include <Quarter/QuarterWidget.h>
@@ -20,6 +22,15 @@ using namespace SIM::Coin3D::Quarter;
 
 class InventorEx 
 {
+
+public:
+    struct ShapeData 
+    {
+        std::vector<std::array<float, 3>> points;
+        std::vector<int32_t> faceIndices;
+        std::vector<int32_t> lineIndices;
+    };
+
 public:
     InventorEx(int argc, char** argv);
     virtual ~InventorEx();
@@ -48,17 +59,16 @@ private:
     void cubeBehind(SoSeparator* root);
     void twoCube();
     void pickAction();
-
     void buildScene(SoSeparator* root);
     void buildFloor();
     void glCallback();
-    
     void oit();
-
     void simpleDepthTest();
-
     void whyNotRerender();
     void hiddenLine();
+    SoSwitch* assembleBodyScene(const ShapeData& data);
+    void hiddenLine2();
+
     // plugins
     void loadPickAndWrite();
     void loadErrorHandle();
