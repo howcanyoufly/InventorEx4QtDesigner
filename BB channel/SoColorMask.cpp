@@ -1,5 +1,4 @@
 
-
 #ifdef WIN32
 #include <windows.h>
 #endif // WIN32
@@ -10,6 +9,12 @@
 #include <GL/gl.h>
 #endif // __APPLE__
 #include "SoColorMask.h"
+#include "Inventor/misc/SoState.h"
+#include "Inventor/actions/SoGLRenderAction.h"
+#include "Inventor/elements/SoMaterialBindingElement.h"
+#include "Inventor/elements/SoLightModelElement.h"
+#include "Inventor/elements/SoPolygonOffsetElement.h"
+#include "Inventor/elements/SoOverrideElement.h"
 
 SO_NODE_SOURCE(SoColorMask);
 
@@ -37,9 +42,8 @@ SoColorMask::~SoColorMask()
 
 void SoColorMask::GLRender(SoGLRenderAction* action)
 {
-    //glPushAttrib(GL_COLOR_BUFFER_BIT);
+    // only draw into depth buffer
     glColorMask(red.getValue(), green.getValue(), blue.getValue(), alpha.getValue());
-    //glPopAttrib();
 
 }
 

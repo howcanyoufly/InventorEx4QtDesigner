@@ -1506,13 +1506,12 @@ void InventorEx::loadBackground(void)
 }
 
 
-GLboolean masks[4];
-
 void enableColorMask(void*, SoAction* action)
 {
     if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
         return;
-    glColorMask(masks[0], masks[1], masks[2], masks[3]);
+
+    glPopAttrib();
     s_renderCountForDebug++;
 };
 
@@ -1522,7 +1521,7 @@ void disableColorMask(void*, SoAction* action)
     if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
         return;
 
-    glGetBooleanv(GL_COLOR_WRITEMASK, masks);
+    glPushAttrib(GL_COLOR_BUFFER_BIT);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
     s_renderCountForDebug++;
 }
@@ -1650,6 +1649,54 @@ void InventorEx::whyNotRerender()
 
 void InventorEx::hiddenLine()
 {
+    float pts[8][3] = {
+    { 0.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 1.0, 0.0 },
+    { 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 1.0, 0.0, 1.0 },
+    { 1.0, 1.0, 1.0 },
+    { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
+    };
+    int32_t lineIndices[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoIndexedLineSet* lineSet = new SoIndexedLineSet;
+    SoIndexedFaceSet* faceSet2 = new SoIndexedFaceSet;
+    SoIndexedLineSet* lineSet2 = new SoIndexedLineSet;
+    SoTranslation* translation = new SoTranslation;
+
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 48, faceIndices);
+    lineSet->coordIndex.setValues(0, 24, lineIndices);
+    translation->translation.setValue(0.5, 0.5, 0.5);
+    faceSet2->coordIndex.setValues(0, 48, faceIndices);
+    lineSet2->coordIndex.setValues(0, 24, lineIndices);
+
+
     m_root->addChild(new SoGradientBackground);
 
     SoSeparator* firstPassSeparator = new SoSeparator;
@@ -1663,29 +1710,30 @@ void InventorEx::hiddenLine()
     colorMask->blue = FALSE;
     colorMask->alpha = FALSE;
     firstPassSeparator->addChild(colorMask);
-
-    twoCube();
+    // todo: depthOffset is similar to SoPolygonOffset but this node uses a different algorithm
+    // based on Lengyel's method from Game Programming Gems and improved by VSG
+    SoPolygonOffset* depthOffset = new SoPolygonOffset;
+    firstPassSeparator->addChild(depthOffset);
+    firstPassSeparator->addChild(coords);
+    firstPassSeparator->addChild(faceSet);
+    firstPassSeparator->addChild(translation);
+    firstPassSeparator->addChild(faceSet2);
 
     SoSeparator* secondPassSeparator = new SoSeparator;
     m_root->addChild(secondPassSeparator);
 
     // For the second pass, draw the model in BASE_COLOR mode and DrawStyle LINES
+    SoColorMask* colorMask2 = new SoColorMask;
+    secondPassSeparator->addChild(colorMask2);
+
     SoLightModel* lightModel = new SoLightModel;
     lightModel->model = SoLightModel::BASE_COLOR;
     secondPassSeparator->addChild(lightModel);
 
-    SoDrawStyle* drawStyle = new SoDrawStyle;
-    drawStyle->style = SoDrawStyle::LINES;
-    secondPassSeparator->addChild(drawStyle);
 
-    // Add a DepthOffset to make sure the lines will always be drawn in front
-    // of the model
-    //SoDepthOffset* depthOffset = new SoDepthOffset;
-    //secondPassSeparator->addChild(depthOffset);
-    SoPolygonOffset* polygonOffset = new SoPolygonOffset;
-    secondPassSeparator->addChild(polygonOffset);
-
-    twoCube();
-
+    secondPassSeparator->addChild(coords);
+    secondPassSeparator->addChild(lineSet);
+    secondPassSeparator->addChild(translation);
+    secondPassSeparator->addChild(lineSet2);
 }
 
