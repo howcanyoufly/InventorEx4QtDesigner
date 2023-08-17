@@ -22,7 +22,6 @@ using namespace SIM::Coin3D::Quarter;
 
 class InventorEx 
 {
-
 public:
     struct ShapeData 
     {
@@ -35,8 +34,9 @@ public:
     InventorEx(int argc, char** argv);
     virtual ~InventorEx();
 
+    // Public API
+    void run(const std::string& funcName);
     void resetScene();
-    void run(std::string& funcName);
     const std::map<std::string, std::function<void(void)>>& getFunctions() const;
 
 private:
@@ -54,15 +54,22 @@ private:
     void lights();
     void referenceCount();
     void indexedFaceSet();
+
+    // hiddenline discovery
     void cubeFront(SoSeparator* root);
-    void cubeFrontPlus(SoSeparator* root);
     void cubeBehind(SoSeparator* root);
     void twoCube();
     void pickAction();
+
+    // glcallback
     void buildScene(SoSeparator* root);
     void buildFloor();
     void glCallback();
+
+    // oit unfinished
     void oit();
+
+    // hiddenline implement
     void simpleDepthTest();
     void whyNotRerender();
     void hiddenLine();
@@ -73,7 +80,7 @@ private:
     void loadPickAndWrite();
     void loadErrorHandle();
     void loadGLCallback();
-    void loadBackground(void);
+    void loadBackground();
 
 
     std::map<std::string, std::function<void(void)>> m_functions;
@@ -84,7 +91,8 @@ private:
     QMainWindow* m_mainwin;
     QuarterWidget* m_viewer;
     SoSeparator* m_root;
-    bool m_reset;
+
+    bool m_reset;// function did but plugin did not
 };
 
 
@@ -110,7 +118,4 @@ private:
     void setupOITResources(); // This function will initialize all OpenGL resources related to OIT.
     void cleanupOITResources(); // This function will delete and cleanup all OpenGL resources.
 
-private:
-    void renderGround();
-    void renderAxes();
 };

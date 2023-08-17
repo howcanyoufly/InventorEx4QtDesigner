@@ -43,9 +43,9 @@
 
 #include <GL/gl.h>
 
+#include "utils.h"
 #include "SoGradientBackground.h"
 #include "SoColorMask.h"
-#include "Inventor/actions/SoSearchAction.h"
 
 
 static int s_renderCountForDebug = 0;
@@ -79,7 +79,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"oit", std::bind(&InventorEx::oit, this)},
         {"simpleDepthTest", std::bind(&InventorEx::simpleDepthTest, this)},
         {"whyNotRerender", std::bind(&InventorEx::whyNotRerender, this)},
-        {"hiddenLine", std::bind(&InventorEx::hiddenLine, this)},
+        {"hiddenLine1", std::bind(&InventorEx::hiddenLine, this)},
+        {"hiddenLine2", std::bind(&InventorEx::hiddenLine2, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -145,7 +146,7 @@ void InventorEx::resetScene()
     m_mainwin->setCentralWidget(m_viewer);
 }
 
-void InventorEx::run(std::string& funcName)
+void InventorEx::run(const std::string& funcName)
 {
     std::vector<std::string> matches;
 
@@ -168,10 +169,11 @@ void InventorEx::run(std::string& funcName)
         {
             std::cout << match << '\n';
         }
-        std::getline(std::cin, funcName);
+        std::string additionalInput;
+        std::getline(std::cin, additionalInput);
         for (auto it = matches.begin(); it != matches.end();) 
         {
-            if (-1 == it->find(funcName)) 
+            if (-1 == it->find(additionalInput))
             {
                 it = matches.erase(it);
             }
@@ -182,7 +184,7 @@ void InventorEx::run(std::string& funcName)
         }
         if (matches.size() > 1 || matches.size() == 0)
         {
-            run(funcName);
+            run(additionalInput);
             return;
         }
     }
@@ -885,17 +887,6 @@ void InventorEx::cubeFront(SoSeparator* root)
     transform->translation.setValue({ 0.5, 0.5, 0.5 });
 }
 
-void InventorEx::cubeFrontPlus(SoSeparator* root)
-{
-    cubeFront(root);
-    SoSeparator* dataNode = (SoSeparator*)SoNode::getByName(SbName("DataNode"));
-    // transform
-    SoTransform* transform = new SoTransform;
-    dataNode->insertChild(transform, 0);
-    transform->translation.setValue({ 0.5, 0.5, 0.5 });
-}
-
-
 void InventorEx::twoCube()
 {
     // shape
@@ -1442,7 +1433,7 @@ void InventorEx::loadGLCallback()
     renderViewer = m_viewer;
 }
 
-void InventorEx::loadBackground(void)
+void InventorEx::loadBackground()
 {
     // create a gradient background
     SoSeparator* background = new SoSeparator;
@@ -1568,8 +1559,6 @@ void InventorEx::simpleDepthTest()
     SoIndexedLineSet* lineSet = new SoIndexedLineSet;
     SoCallback* colorOff = new SoCallback;
     SoCallback* colorOn = new SoCallback;
-
-
 
     m_root->addChild(coords);
     m_root->addChild(colorOff);
@@ -1703,6 +1692,7 @@ void InventorEx::hiddenLine()
     SoIndexedFaceSet* faceSet2 = new SoIndexedFaceSet;
     SoIndexedLineSet* lineSet2 = new SoIndexedLineSet;
     SoTranslation* translation = new SoTranslation;
+    SoMaterial* material = new SoMaterial;
 
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 48, faceIndices);
@@ -1710,7 +1700,7 @@ void InventorEx::hiddenLine()
     translation->translation.setValue(0.5, 0.5, 0.5);
     faceSet2->coordIndex.setValues(0, 48, faceIndices);
     lineSet2->coordIndex.setValues(0, 24, lineIndices);
-
+    material->transparency = 0.5;
 
     m_root->addChild(new SoGradientBackground);
 
@@ -1730,6 +1720,7 @@ void InventorEx::hiddenLine()
     SoPolygonOffset* depthOffset = new SoPolygonOffset;
     firstPassSeparator->addChild(depthOffset);
     firstPassSeparator->addChild(coords);
+    firstPassSeparator->addChild(material);// 没效果
     firstPassSeparator->addChild(faceSet);
     firstPassSeparator->addChild(translation);
     firstPassSeparator->addChild(faceSet2);
@@ -1848,6 +1839,8 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
     lineSet->coordIndex.setValues(0, data.lineIndices.size(), data.lineIndices.data());
 
+    transparentMaterial->transparency = 0.5;
+
     return bodySwitch;
 }
 
@@ -1875,7 +1868,9 @@ void InventorEx::hiddenLine2()
     };
 
     ShapeData data;
-    data.points.assign(&pts[0], &pts[8]);
+    for (int i = 0; i < 8; i++) {
+        data.points.push_back({ pts[i][0], pts[i][1], pts[i][2] });
+    }
     data.faceIndices = {
         0, 2, 1, SO_END_FACE_INDEX,
         0, 3, 2, SO_END_FACE_INDEX,
@@ -1901,7 +1896,9 @@ void InventorEx::hiddenLine2()
     };
 
     ShapeData data2;
-    data2.points.assign(&pts2[0], &pts2[8]);
+    for (int i = 0; i < 8; i++) {
+        data2.points.push_back({ pts2[i][0], pts2[i][1], pts2[i][2] });
+    }
     data2.faceIndices = {
         0, 2, 1, SO_END_FACE_INDEX,
         0, 3, 2, SO_END_FACE_INDEX,
@@ -1932,7 +1929,7 @@ void InventorEx::hiddenLine2()
     CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoColorMask, colorMask2)
     CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoLightModel, lightModel)    
+    CREATE_NODE(SoLightModel, lightModel)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
@@ -1945,8 +1942,8 @@ void InventorEx::hiddenLine2()
         {secondPassSeparator, colorMask2},
         {secondPassSeparator, lightModel},
         {secondPassSeparator, line},
-        {face, assembleBodyScene(data)},
-        {face, assembleBodyScene(data2)},
+        {face, assembleBodyScene(data)},// body1
+        {face, assembleBodyScene(data2)},// body2
         {line, assembleBodyScene(data)},
         {line, assembleBodyScene(data2)},
     };
@@ -1955,35 +1952,25 @@ void InventorEx::hiddenLine2()
         ADD_CHILD(relationship.first, relationship.second);
     }
 
-    // 在face下找lineSwitch
-    SoSearchAction searchAction;
-    searchAction.setName("lineSwitch");
-    searchAction.setSearchingAll(TRUE);
-    searchAction.apply(face);
-    SoPathList& resultList = searchAction.getPaths();
-    for (int i = 0; i < resultList.getLength(); i++) 
+    std::vector<SoSwitch*> lineSwitchVec;
+    lineSwitchVec = searchNodes<SoSwitch>(face, "lineSwitch");// 也可以使用全局变量、assembleBodyScene传参的方式
+    for (auto& node : lineSwitchVec)
     {
-        SoNode* node = resultList[i]->getTail();
-        if (node && node->isOfType(SoSwitch::getClassTypeId())) 
-        {
-            SoSwitch* lineSwitchNode = dynamic_cast<SoSwitch*>(node);
-            lineSwitchNode->whichChild = SO_SWITCH_NONE;
-        }
+        node->whichChild = SO_SWITCH_NONE;
+    }
+    std::vector<SoSwitch*> faceSwitchVec;
+    faceSwitchVec = searchNodes<SoSwitch>(line, "faceSwitch");
+    for (auto& node : faceSwitchVec)
+    {
+        node->whichChild = SO_SWITCH_NONE;
     }
 
-    // 在line下找faceSwitch
-    searchAction.setName("faceSwitch");
-    searchAction.setSearchingAll(TRUE);
-    searchAction.apply(line);
-    resultList = searchAction.getPaths();
-    for (int i = 0; i < resultList.getLength(); i++)
+    // dot line
+    std::vector<SoSwitch*> materialSwitchVec;
+    materialSwitchVec = searchNodes<SoSwitch>(line, "materialSwitch");
+    for (auto& node : materialSwitchVec)
     {
-        SoNode* node = resultList[i]->getTail();
-        if (node && node->isOfType(SoSwitch::getClassTypeId()))
-        {
-            SoSwitch* faceSwitchNode = dynamic_cast<SoSwitch*>(node);
-            faceSwitchNode->whichChild = SO_SWITCH_NONE;
-        }
+        node->whichChild = 0;
     }
 
     colorMask->red = FALSE;
