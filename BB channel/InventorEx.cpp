@@ -1795,6 +1795,8 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoIndexedFaceSet, faceSet)
     CREATE_NODE(SoMaterial, transparentMaterial)
     CREATE_NODE(SoIndexedLineSet, lineSet)
+    //CREATE_NODE(SoSwitch, lineStyleSwitch)
+    //CREATE_NODE(SoDrawStyle, lineStyle)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships = 
     {
@@ -1822,7 +1824,9 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {faceRoot, materialSwitch},
         {faceRoot, faceSet},
         {materialSwitch, transparentMaterial},
-        {lineRoot, lineSet}
+        {lineRoot, lineSet},
+        //{lineRoot, lineStyleSwitch},
+        //{lineStyleSwitch, lineStyle}
     };
     for (const auto& relationship : relationships) 
     {
@@ -1838,8 +1842,6 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
     faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
     lineSet->coordIndex.setValues(0, data.lineIndices.size(), data.lineIndices.data());
-
-    transparentMaterial->transparency = 0.5;
 
     return bodySwitch;
 }
@@ -1926,22 +1928,32 @@ void InventorEx::hiddenLine2()
     CREATE_NODE(SoSeparator, face)
     CREATE_NODE(SoSeparator, secondPassSeparator)
     CREATE_NODE(SoSeparator, line)
+    CREATE_NODE(SoSwitch, thirdPassSwitch)
+    CREATE_NODE(SoSeparator, dotLineSeparator)
     CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoColorMask, colorMask2)
     CREATE_NODE(SoPolygonOffset, polygonOffset)
     CREATE_NODE(SoLightModel, lightModel)
+    CREATE_NODE(SoDrawStyle, linestyle)
+    CREATE_NODE(SoDepthBuffer, depthbuffer)
+
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, new SoGradientBackground},
         {m_root, firstPassSeparator},
         {m_root, secondPassSeparator},
+        {m_root, thirdPassSwitch},
         {firstPassSeparator, colorMask},
         {firstPassSeparator, polygonOffset},
         {firstPassSeparator, face},
         {secondPassSeparator, colorMask2},
         {secondPassSeparator, lightModel},
         {secondPassSeparator, line},
+        {thirdPassSwitch, dotLineSeparator},
+        {dotLineSeparator, linestyle},
+        {dotLineSeparator, depthbuffer},
+        {dotLineSeparator, line},
         {face, assembleBodyScene(data)},// body1
         {face, assembleBodyScene(data2)},// body2
         {line, assembleBodyScene(data)},
@@ -1965,14 +1977,6 @@ void InventorEx::hiddenLine2()
         node->whichChild = SO_SWITCH_NONE;
     }
 
-    // dot line
-    std::vector<SoSwitch*> materialSwitchVec;
-    materialSwitchVec = searchNodes<SoSwitch>(line, "materialSwitch");
-    for (auto& node : materialSwitchVec)
-    {
-        node->whichChild = 0;
-    }
-
     colorMask->red = FALSE;
     colorMask->green = FALSE;
     colorMask->blue = FALSE;
@@ -1980,4 +1984,7 @@ void InventorEx::hiddenLine2()
 
     lightModel->model = SoLightModel::BASE_COLOR;
 
+    thirdPassSwitch->whichChild = 0;
+    linestyle->linePattern.setValue(0xff00);
+    depthbuffer->function = SoDepthBuffer::ALWAYS;
 }
