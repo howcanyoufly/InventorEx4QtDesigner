@@ -66,7 +66,7 @@ private:
     void buildFloor();
     void glCallback();
 
-    // oit unfinished
+    // oit, Riddled with errors and flaws
     void oit();
 
     // hiddenline implement
@@ -74,7 +74,9 @@ private:
     void whyNotRerender();
     void hiddenLine();
     SoSwitch* assembleBodyScene(const ShapeData& data);
-    void hiddenLine2();
+    std::vector<ShapeData> generateRandomCuboids(int count, float maxSize);
+    void wireframe();
+
 
     // plugins
     void loadPickAndWrite();

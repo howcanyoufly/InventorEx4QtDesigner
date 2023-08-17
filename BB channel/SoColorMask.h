@@ -1,22 +1,3 @@
-/*================================================================================
- *** THE CONTENT OF THIS WORK IS PROPRIETARY TO FEI S.A.S, (FEI S.A.S.),       ***
- ***              AND IS DISTRIBUTED UNDER A LICENSE AGREEMENT.                ***
- ***                                                                           ***
- ***  REPRODUCTION, DISCLOSURE,  OR USE,  IN WHOLE OR IN PART,  OTHER THAN AS  ***
- ***  SPECIFIED  IN THE LICENSE ARE  NOT TO BE  UNDERTAKEN  EXCEPT WITH PRIOR  ***
- ***  WRITTEN AUTHORIZATION OF FEI S.A.S.                                      ***
- ***                                                                           ***
- ***                        RESTRICTED RIGHTS LEGEND                           ***
- ***  USE, DUPLICATION, OR DISCLOSURE BY THE GOVERNMENT OF THE CONTENT OF THIS ***
- ***  WORK OR RELATED DOCUMENTATION IS SUBJECT TO RESTRICTIONS AS SET FORTH IN ***
- ***  SUBPARAGRAPH (C)(1) OF THE COMMERCIAL COMPUTER SOFTWARE RESTRICTED RIGHT ***
- ***  CLAUSE  AT FAR 52.227-19  OR SUBPARAGRAPH  (C)(1)(II)  OF  THE RIGHTS IN ***
- ***  TECHNICAL DATA AND COMPUTER SOFTWARE CLAUSE AT DFARS 52.227-7013.        ***
- ***                                                                           ***
- ***                   COPYRIGHT (C) 1996-2020 BY FEI S.A.S,                   ***
- ***                        BORDEAUX, FRANCE                                   ***
- ***                      ALL RIGHTS RESERVED                                  ***
- ================================================================================*/
 
 #pragma once
 

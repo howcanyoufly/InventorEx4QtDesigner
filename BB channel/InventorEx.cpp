@@ -79,8 +79,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"oit", std::bind(&InventorEx::oit, this)},
         {"simpleDepthTest", std::bind(&InventorEx::simpleDepthTest, this)},
         {"whyNotRerender", std::bind(&InventorEx::whyNotRerender, this)},
-        {"hiddenLine1", std::bind(&InventorEx::hiddenLine, this)},
-        {"hiddenLine2", std::bind(&InventorEx::hiddenLine2, this)},
+        {"hiddenLine", std::bind(&InventorEx::hiddenLine, this)},
+        {"wireframe", std::bind(&InventorEx::wireframe, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -1477,7 +1477,7 @@ void InventorEx::loadBackground()
     // 画星星
     SoCoordinate3* starCoords = new SoCoordinate3;
     SoPointSet* stars = new SoPointSet;
-    const int STAR_COUNT = 200;  // 你可以调整这个数值来增加或减少星星数量
+    const int STAR_COUNT = 200;
     for (int i = 0; i < STAR_COUNT; i++) {
         float x = (rand() % 1000 - 500) / 1000.0f;
         float y = (rand() % 1000 - 500) / 1000.0f;
@@ -1846,97 +1846,73 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     return bodySwitch;
 }
 
-void InventorEx::hiddenLine2()
+std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids(int count, float maxSize)
 {
-    float pts[][3] = {
-        { 0.0, 0.0, 0.0 },
-        { 1.0, 0.0, 0.0 },
-        { 1.0, 1.0, 0.0 },
-        { 0.0, 1.0, 0.0 },
-        { 0.0, 0.0, 1.0 },
-        { 1.0, 0.0, 1.0 },
-        { 1.0, 1.0, 1.0 },
-        { 0.0, 1.0, 1.0 },
-    };
-    float pts2[][3] = {
-        { 0.5, 0.5, 0.5 },
-        { 1.5, 0.5, 0.5 },
-        { 1.5, 1.5, 0.5 },
-        { 0.5, 1.5, 0.5 },
-        { 0.5, 0.5, 1.5 },
-        { 1.5, 0.5, 1.5 },
-        { 1.5, 1.5, 1.5 },
-        { 0.5, 1.5, 1.5 },
-    };
+    std::vector<ShapeData> datasets;
+    srand(time(NULL));
 
-    ShapeData data;
-    for (int i = 0; i < 8; i++) {
-        data.points.push_back({ pts[i][0], pts[i][1], pts[i][2] });
+    for (int i = 0; i < count; ++i) {
+        ShapeData data;
+        float startX = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
+        float startY = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
+        float startZ = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
+
+        float size = 0.5f + static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5f; // size between 0.5 and 1.0
+
+        for (int j = 0; j < 8; ++j) {
+            float x = startX + ((j & 1) ^ ((j & 2) >> 1) ? size : 0);
+            float y = startY + ((j & 2) ? size : 0);
+            float z = startZ + ((j & 4) ? size : 0);
+            data.points.push_back({ x, y, z });
+        }
+
+        data.faceIndices = {
+            0, 2, 1, SO_END_FACE_INDEX,
+            0, 3, 2, SO_END_FACE_INDEX,
+            0, 1, 5, SO_END_FACE_INDEX,
+            0, 5, 4, SO_END_FACE_INDEX,
+            1, 2, 6, SO_END_FACE_INDEX,
+            1, 6, 5, SO_END_FACE_INDEX,
+            2, 3, 6, SO_END_FACE_INDEX,
+            3, 7, 6, SO_END_FACE_INDEX,
+            3, 4, 7, SO_END_FACE_INDEX,
+            0, 4, 3, SO_END_FACE_INDEX,
+            4, 5, 7, SO_END_FACE_INDEX,
+            5, 6, 7, SO_END_FACE_INDEX,
+        };
+        data.lineIndices = {
+            0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+            4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+            0, 4, SO_END_LINE_INDEX,
+            1, 5, SO_END_LINE_INDEX,
+            2, 6, SO_END_LINE_INDEX,
+            3, 7, SO_END_LINE_INDEX
+        };
+
+        datasets.push_back(data);
     }
-    data.faceIndices = {
-        0, 2, 1, SO_END_FACE_INDEX,
-        0, 3, 2, SO_END_FACE_INDEX,
-        0, 1, 5, SO_END_FACE_INDEX,
-        0, 5, 4, SO_END_FACE_INDEX,
-        1, 2, 6, SO_END_FACE_INDEX,
-        1, 6, 5, SO_END_FACE_INDEX,
-        2, 3, 6, SO_END_FACE_INDEX,
-        3, 7, 6, SO_END_FACE_INDEX,
-        3, 4, 7, SO_END_FACE_INDEX,
-        0, 4, 3, SO_END_FACE_INDEX,
-        4, 5, 7, SO_END_FACE_INDEX,
-        5, 6, 7, SO_END_FACE_INDEX,
 
-    };
-    data.lineIndices = {
-        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
-        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
-        0, 4, SO_END_LINE_INDEX,
-        1, 5, SO_END_LINE_INDEX,
-        2, 6, SO_END_LINE_INDEX,
-        3, 7, SO_END_LINE_INDEX
-    };
+    return datasets;
+}
 
-    ShapeData data2;
-    for (int i = 0; i < 8; i++) {
-        data2.points.push_back({ pts2[i][0], pts2[i][1], pts2[i][2] });
-    }
-    data2.faceIndices = {
-        0, 2, 1, SO_END_FACE_INDEX,
-        0, 3, 2, SO_END_FACE_INDEX,
-        0, 1, 5, SO_END_FACE_INDEX,
-        0, 5, 4, SO_END_FACE_INDEX,
-        1, 2, 6, SO_END_FACE_INDEX,
-        1, 6, 5, SO_END_FACE_INDEX,
-        2, 3, 6, SO_END_FACE_INDEX,
-        3, 7, 6, SO_END_FACE_INDEX,
-        3, 4, 7, SO_END_FACE_INDEX,
-        0, 4, 3, SO_END_FACE_INDEX,
-        4, 5, 7, SO_END_FACE_INDEX,
-        5, 6, 7, SO_END_FACE_INDEX,
-    };
-    data2.lineIndices = {
-        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
-        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
-        0, 4, SO_END_LINE_INDEX,
-        1, 5, SO_END_LINE_INDEX,
-        2, 6, SO_END_LINE_INDEX,
-        3, 7, SO_END_LINE_INDEX
-    };
+void InventorEx::wireframe()
+{
+    std::vector<ShapeData> randomCuboids = generateRandomCuboids(20, 5.0);
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
-    CREATE_NODE(SoSeparator, face)
+    CREATE_NODE(SoSeparator, facets)
     CREATE_NODE(SoSeparator, secondPassSeparator)
-    CREATE_NODE(SoSeparator, line)
+    CREATE_NODE(SoSeparator, edges)
     CREATE_NODE(SoSwitch, thirdPassSwitch)
-    CREATE_NODE(SoSeparator, dotLineSeparator)
+    CREATE_NODE(SoSeparator, dashedEdges)
+    CREATE_NODE(SoSeparator, dimEdges)
     CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoColorMask, colorMask2)
     CREATE_NODE(SoPolygonOffset, polygonOffset)
     CREATE_NODE(SoLightModel, lightModel)
-    CREATE_NODE(SoDrawStyle, linestyle)
+    CREATE_NODE(SoDrawStyle, dashedLinestyle)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
-
+    CREATE_NODE(SoMaterial, dimColor)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
@@ -1946,32 +1922,36 @@ void InventorEx::hiddenLine2()
         {m_root, thirdPassSwitch},
         {firstPassSeparator, colorMask},
         {firstPassSeparator, polygonOffset},
-        {firstPassSeparator, face},
+        {firstPassSeparator, facets},
         {secondPassSeparator, colorMask2},
         {secondPassSeparator, lightModel},
-        {secondPassSeparator, line},
-        {thirdPassSwitch, dotLineSeparator},
-        {dotLineSeparator, linestyle},
-        {dotLineSeparator, depthbuffer},
-        {dotLineSeparator, line},
-        {face, assembleBodyScene(data)},// body1
-        {face, assembleBodyScene(data2)},// body2
-        {line, assembleBodyScene(data)},
-        {line, assembleBodyScene(data2)},
+        {secondPassSeparator, edges},
+        {thirdPassSwitch, dashedEdges},
+        {thirdPassSwitch, dimEdges},
+        {dashedEdges, depthbuffer},
+        {dashedEdges, dashedLinestyle},
+        {dashedEdges, edges},
+        {dimEdges, depthbuffer},
+        {dimEdges, edges},// 淡化线需要做两方面，一个是edges中线颜色的设置，一个是如何不影响已有的线，可以从颜色相加或是depthBuffer判断入手
     };
     for (const auto& relationship : relationships)
     {
         ADD_CHILD(relationship.first, relationship.second);
     }
+    for (const auto& data : randomCuboids) 
+    {
+        ADD_CHILD(facets, assembleBodyScene(data));
+        ADD_CHILD(edges, assembleBodyScene(data));
+    }
 
     std::vector<SoSwitch*> lineSwitchVec;
-    lineSwitchVec = searchNodes<SoSwitch>(face, "lineSwitch");// 也可以使用全局变量、assembleBodyScene传参的方式
+    lineSwitchVec = searchNodes<SoSwitch>(facets, "lineSwitch");// 也可以使用全局变量、assembleBodyScene传参的方式？
     for (auto& node : lineSwitchVec)
     {
         node->whichChild = SO_SWITCH_NONE;
     }
     std::vector<SoSwitch*> faceSwitchVec;
-    faceSwitchVec = searchNodes<SoSwitch>(line, "faceSwitch");
+    faceSwitchVec = searchNodes<SoSwitch>(edges, "faceSwitch");
     for (auto& node : faceSwitchVec)
     {
         node->whichChild = SO_SWITCH_NONE;
@@ -1984,7 +1964,12 @@ void InventorEx::hiddenLine2()
 
     lightModel->model = SoLightModel::BASE_COLOR;
 
-    thirdPassSwitch->whichChild = 0;
-    linestyle->linePattern.setValue(0xff00);
+    std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim(todo)" << std::endl;
+    int option = -1;
+    std::cin >> option;
+    thirdPassSwitch->whichChild = option;
+
+    dashedLinestyle->linePattern.setValue(0xff00);
     depthbuffer->function = SoDepthBuffer::ALWAYS;
+
 }

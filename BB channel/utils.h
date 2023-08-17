@@ -4,6 +4,8 @@
 #include <Inventor/nodes/SoSeparator.h>
 #include <Inventor/actions/SoSearchAction.h>
 
+#include "InventorEx.h"
+
 
 SoSeparator* readFile(const char* filename)
 {
@@ -131,3 +133,4 @@ std::vector<T*> searchNodes(SoNode* scene, SbName name)
     delete sa;
     return ret;
 }
+
