@@ -48,6 +48,14 @@
 #include "SoColorMask.h"
 
 
+#define CREATE_NODE(type, name) \
+    type* name = new type; \
+    name->setName(#name);
+
+#define ADD_CHILD(parent, child) \
+    parent->addChild(child);
+
+
 static int s_renderCountForDebug = 0;
 
 void errorHandlerCB(const SoError* err, void* data);
@@ -1744,29 +1752,34 @@ void InventorEx::hiddenLine()
 }
 
 /*
-    ©¸©¤©¤ staticWireFrame (SoSeparator)
-        ©À©¤©¤ material (SoMaterial)
-        ©À©¤©¤ offset (SoPolygonOffset)
-        ©À©¤©¤ faceSwitch (SoSwitch)
-        |   ©¸©¤©¤ faceRoot (SoSeparator)
-        |       ©À©¤©¤ faceStyle (SoDrawStyle)
-        |       ©À©¤©¤ faceNormal (SoNormal)
-        |       ©À©¤©¤ normalBinding (SoNormalBinding)
-        |       ©À©¤©¤ materialSwitch (SoSwitch)
-        |       |   ©¸©¤©¤ transparentMaterial (SoMaterial)
-        |       ©¸©¤©¤ faceSet (SoIndexedFaceSet)
-        ©¸©¤©¤ lineSwitch (SoSwitch)
-            ©¸©¤©¤ lineRoot (SoSeparator)
-                ©¸©¤©¤ lineSet (SoIndexedLineSet)
+bodySwitch
+©¦
+©¸©¤©¤ body
+    ©À©¤©¤ scale
+    ©À©¤©¤ trasparencyTypeSwitch
+    ©¦   ©¸©¤©¤ trasparencyType
+    ©¸©¤©¤ dataNode
+        ©À©¤©¤ coords
+        ©¸©¤©¤ renderModeSwitch
+            ©À©¤©¤ shadeWithEdge
+            ©À©¤©¤ shadeWithoutEdge
+            ©À©¤©¤ transluency
+            ©À©¤©¤ staticWireframe
+            ©¦   ©À©¤©¤ material
+            ©¦   ©À©¤©¤ offset
+            ©¦   ©À©¤©¤ faceSwitch
+            ©¦   ©¦   ©¸©¤©¤ faceRoot
+            ©¦   ©¦       ©À©¤©¤ faceStyle
+            ©¦   ©¦       ©À©¤©¤ faceNormal
+            ©¦   ©¦       ©À©¤©¤ normalBinding
+            ©¦   ©¦       ©À©¤©¤ materialSwitch
+            ©¦   ©¦       ©¦   ©¸©¤©¤ transparentMaterial
+            ©¦   ©¦       ©¸©¤©¤ faceSet
+            ©¦   ©¸©¤©¤ lineSwitch
+            ©¦       ©¸©¤©¤ lineRoot
+            ©¦           ©¸©¤©¤ lineSet
+            ©¸©¤©¤ wireframeWithoutHidden
 */
-
-#define CREATE_NODE(type, name) \
-    type* name = new type; \
-    name->setName(#name);
-
-#define ADD_CHILD(parent, child) \
-    parent->addChild(child);
-
 SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
 {
     CREATE_NODE(SoSwitch, bodySwitch)
@@ -1895,6 +1908,33 @@ std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids
     return datasets;
 }
 
+/*
+m_root
+©¦
+©À©¤©¤ SoGradientBackground
+©¦
+©À©¤©¤ firstPassSeparator
+©¦   ©À©¤©¤ colorMask
+©¦   ©À©¤©¤ polygonOffset
+©¦   ©¸©¤©¤ facets
+©¦      (©¸©¤ bodySwitch)
+©¦
+©À©¤©¤ secondPassSeparator
+©¦   ©À©¤©¤ colorMask2
+©¦   ©À©¤©¤ lightModel
+©¦   ©¸©¤©¤ edges
+©¦      (©¸©¤ bodySwitch)
+©¦
+©¸©¤©¤ thirdPassSwitch
+    ©À©¤©¤ dashedEdges
+    ©¦   ©À©¤©¤ depthbuffer
+    ©¦   ©À©¤©¤ dashedLinestyle
+    ©¦   ©¸©¤©¤ edges
+    ©¦
+    ©¸©¤©¤ dimEdges
+        ©À©¤©¤ depthbuffer
+        ©¸©¤©¤ edges
+*/
 void InventorEx::wireframe()
 {
     std::vector<ShapeData> randomCuboids = generateRandomCuboids(20, 5.0);

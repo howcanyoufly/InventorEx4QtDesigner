@@ -40,10 +40,11 @@ public:
     const std::map<std::string, std::function<void(void)>>& getFunctions() const;
 
 private:
-    // 参考示例
+    // functions 节点树
+    // 参考节点树
     void superScene();
 
-    // functions 节点树
+    // inventor mentor exercises
     void sphere();
     void cube();
     void engineSpin();
@@ -66,15 +67,17 @@ private:
     void buildFloor();
     void glCallback();
 
-    // oit, Riddled with errors and flaws
+    // Order-Independent-Transparency, a preliminary attempt，riddled with errors and flaws
     void oit();
 
-    // hiddenline implement
+    // hiddenline discovery2
     void simpleDepthTest();
     void whyNotRerender();
     void hiddenLine();
+
+    // wireframe implement
     SoSwitch* assembleBodyScene(const ShapeData& data);
-    std::vector<ShapeData> generateRandomCuboids(int count, float maxSize);
+    std::vector<ShapeData> generateRandomCuboids(int count, float maxSize);// count for quentity and maxSize for volume
     void wireframe();
 
 
