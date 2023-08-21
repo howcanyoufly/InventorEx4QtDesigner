@@ -1,3 +1,4 @@
+
 #include "InventorEx.h"
 
 #include <Inventor/SoPickedPoint.h>
@@ -736,9 +737,9 @@ void InventorEx::indexedFaceSet()
     m_root->addChild(myFaceSet);
 
 #else
-    SoDepthBuffer* depthBuffer = new SoDepthBuffer;
-    depthBuffer->test = false;
-    m_root->addChild(depthBuffer);
+    //SoDepthBuffer* depthBuffer = new SoDepthBuffer;
+    //depthBuffer->test = false;
+    //m_root->addChild(depthBuffer);
     // Define colors for the faces
     SoMaterial* myMaterials = new SoMaterial;
     myMaterials->diffuseColor.setValues(0, 12, colors);
@@ -1943,7 +1944,8 @@ void InventorEx::wireframe()
     CREATE_NODE(SoSeparator, facets)
     CREATE_NODE(SoSeparator, secondPassSeparator)
     CREATE_NODE(SoSeparator, edges)
-    CREATE_NODE(SoSwitch, thirdPassSwitch)
+    CREATE_NODE(SoSeparator, thirdPassSeparator)
+    CREATE_NODE(SoSwitch, wireStyleSwitch)
     CREATE_NODE(SoSeparator, dashedEdges)
     CREATE_NODE(SoSeparator, dimEdges)
     CREATE_NODE(SoColorMask, colorMask)
@@ -1952,26 +1954,28 @@ void InventorEx::wireframe()
     CREATE_NODE(SoLightModel, lightModel)
     CREATE_NODE(SoDrawStyle, dashedLinestyle)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
-    CREATE_NODE(SoMaterial, dimColor)
+    CREATE_NODE(SoBaseColor, dimColor)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, new SoGradientBackground},
         {m_root, firstPassSeparator},
         {m_root, secondPassSeparator},
-        {m_root, thirdPassSwitch},
-        {firstPassSeparator, colorMask},
+        {m_root, thirdPassSeparator},
+        {firstPassSeparator, colorMask},// 有没有让colorMask自动恢复
         {firstPassSeparator, polygonOffset},
         {firstPassSeparator, facets},
-        {secondPassSeparator, colorMask2},
+        {secondPassSeparator, colorMask2},// colorMask2是否应该放到firstPassSeparator尾
         {secondPassSeparator, lightModel},
         {secondPassSeparator, edges},
-        {thirdPassSwitch, dashedEdges},
-        {thirdPassSwitch, dimEdges},
-        {dashedEdges, depthbuffer},
+        {thirdPassSeparator, depthbuffer},
+        {thirdPassSeparator, lightModel},
+        {thirdPassSeparator, wireStyleSwitch},
+        {wireStyleSwitch, dashedEdges},
+        {wireStyleSwitch, dimEdges},
         {dashedEdges, dashedLinestyle},
         {dashedEdges, edges},
-        {dimEdges, depthbuffer},
+        {dimEdges, dimColor},
         {dimEdges, edges},// 淡化线需要做两方面，一个是edges中线颜色的设置，一个是如何不影响已有的线，可以从颜色相加或是depthBuffer判断入手
     };
     for (const auto& relationship : relationships)
@@ -1985,7 +1989,7 @@ void InventorEx::wireframe()
     }
 
     std::vector<SoSwitch*> lineSwitchVec;
-    lineSwitchVec = searchNodes<SoSwitch>(facets, "lineSwitch");// 也可以使用全局变量、assembleBodyScene传参的方式？
+    lineSwitchVec = searchNodes<SoSwitch>(facets, "lineSwitch");// 使用全局变量、assembleBodyScene传参进行效率优化
     for (auto& node : lineSwitchVec)
     {
         node->whichChild = SO_SWITCH_NONE;
@@ -2002,14 +2006,16 @@ void InventorEx::wireframe()
     colorMask->blue = FALSE;
     colorMask->alpha = FALSE;
 
-    lightModel->model = SoLightModel::BASE_COLOR;
+    lightModel->model = SoLightModel::BASE_COLOR;// 渲染将只使用当前材质的漫反射颜色和透明度
 
     std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim(todo)" << std::endl;
     int option = -1;
     std::cin >> option;
-    thirdPassSwitch->whichChild = option;
+    wireStyleSwitch->whichChild = option;
 
     dashedLinestyle->linePattern.setValue(0xff00);
-    depthbuffer->function = SoDepthBuffer::ALWAYS;
+    depthbuffer->function = SoDepthBuffer::NOTEQUAL;
 
+    dimColor->setOverride(TRUE);
+    dimColor->rgb.setValue(0.5, 0.5, 0.5);
 }
