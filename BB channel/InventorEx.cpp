@@ -44,9 +44,9 @@
 
 #include <GL/gl.h>
 
-#include "utils.h"
 #include "SoGradientBackground.h"
 #include "SoColorMask.h"
+#include "SoSwitchToChild.h"
 
 
 #define CREATE_NODE(type, name) \
@@ -109,6 +109,7 @@ InventorEx::InventorEx(int argc, char** argv)
     SoOITNode::initClass();  
     SoGradientBackground::initClass();
     SoColorMask::initClass();
+    SoSwitchToChild::initClass();
 
     m_mainwin = new QMainWindow();
     m_mainwin->resize(1200, 900);
@@ -1767,17 +1768,15 @@ bodySwitch
             ├── shadeWithoutEdge
             ├── transluency
             ├── staticWireframe
-            │   ├── material
             │   ├── offset
-            │   ├── faceSwitch
-            │   │   └── faceRoot
-            │   │       ├── faceStyle
-            │   │       ├── faceNormal
-            │   │       ├── normalBinding
-            │   │       ├── materialSwitch
-            │   │       │   └── transparentMaterial
-            │   │       └── faceSet
-            │   └── lineSwitch
+            │   └── frameSwitch
+            │       ├── faceRoot
+            │       │   ├── faceStyle
+            │       │   ├── faceNormal
+            │       │   ├── normalBinding
+            │       │   ├── materialSwitch
+            │       │   │   └── transparentMaterial
+            │       │   └── faceSet
             │       └── lineRoot
             │           └── lineSet
             └── wireframeWithoutHidden
@@ -1797,21 +1796,17 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoSeparator, transluency)
     CREATE_NODE(SoSeparator, staticWireframe)
     CREATE_NODE(SoSeparator, wireframeWithoutHidden)
-    CREATE_NODE(SoSwitch, faceSwitch)
+    CREATE_NODE(SoSwitch, frameSwitch)
     CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoSwitch, lineSwitch)
-    CREATE_NODE(SoSeparator, lineRoot)
-    CREATE_NODE(SoMaterial, material)
     CREATE_NODE(SoPolygonOffset, offset)
     CREATE_NODE(SoDrawStyle, faceStyle)
     CREATE_NODE(SoNormal, faceNormal)
     CREATE_NODE(SoNormalBinding, normalBinding)
     CREATE_NODE(SoSwitch, materialSwitch)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
     CREATE_NODE(SoMaterial, transparentMaterial)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+    CREATE_NODE(SoSeparator, lineRoot)
     CREATE_NODE(SoIndexedLineSet, lineSet)
-    //CREATE_NODE(SoSwitch, lineStyleSwitch)
-    //CREATE_NODE(SoDrawStyle, lineStyle)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships = 
     {
@@ -1827,12 +1822,10 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {renderModeSwitch, transluency},
         {renderModeSwitch, staticWireframe},
         {renderModeSwitch, wireframeWithoutHidden},
-        {staticWireframe, material},
         {staticWireframe, offset},
-        {staticWireframe, faceSwitch},
-        {staticWireframe, lineSwitch},
-        {faceSwitch, faceRoot},
-        {lineSwitch, lineRoot},
+        {staticWireframe, frameSwitch},
+        {frameSwitch, faceRoot},
+        {frameSwitch, lineRoot},
         {faceRoot, faceStyle},
         {faceRoot, faceNormal},
         {faceRoot, normalBinding},
@@ -1840,8 +1833,6 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {faceRoot, faceSet},
         {materialSwitch, transparentMaterial},
         {lineRoot, lineSet},
-        //{lineRoot, lineStyleSwitch},
-        //{lineStyleSwitch, lineStyle}
     };
     for (const auto& relationship : relationships) 
     {
@@ -1851,8 +1842,7 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     bodySwitch->whichChild = 0;
     trasparencyTypeSwitch->whichChild = 0;
     renderModeSwitch->whichChild = 3;
-    faceSwitch->whichChild = 0;
-    lineSwitch->whichChild = 0;
+    frameSwitch->whichChild = 0;
 
     coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
     faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
@@ -1929,44 +1919,40 @@ m_root
 │
 ├── firstPassSeparator
 │   ├── colorMask
-│   ├── polygonOffset
-│   └── facets
-│      (└─ bodySwitch)
+│   ├── switchToFacet
+│   ├── [*]bodies
+│   └── colorMask2
 │
-├── secondPassSeparator
-│   ├── colorMask2
-│   ├── lightModel
-│   └── edges
-│      (└─ bodySwitch)
-│
-└── thirdPassSwitch
-    ├── dashedEdges
-    │   ├── depthbuffer
-    │   ├── dashedLinestyle
-    │   └── edges
-    │
-    └── dimEdges
-        ├── depthbuffer
-        └── edges
+└── secondPassSeparator
+    ├── lightModel
+    ├── switchToEdge
+    ├── [*]bodies
+    └── hiddenEdgesSwitch
+        └── hiddenEdgesSeparator
+            ├── depthbuffer
+            ├── wireStyleSwitch
+            │   ├─ dashedLinestyle
+            │   └─ dimColor
+            └── [*]bodies
+    [*]: shared node
 */
 void InventorEx::wireframe()
 {
     std::vector<ShapeData> randomCuboids = generateRandomCuboids(20/*count*/, 5.0/*size*/);
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
-    CREATE_NODE(SoSeparator, facets)
     CREATE_NODE(SoSeparator, secondPassSeparator)
-    CREATE_NODE(SoSeparator, edges)
-    CREATE_NODE(SoSeparator, thirdPassSeparator)
-    CREATE_NODE(SoSwitch, wireStyleSwitch)
-    CREATE_NODE(SoSeparator, dashedEdges)
-    CREATE_NODE(SoSeparator, dimEdges)
+    CREATE_NODE(SoSwitch, hiddenEdgesSwitch)
+    CREATE_NODE(SoSeparator, hiddenEdgesSeparator)
+    CREATE_NODE(SoSeparator, bodies)
+    CREATE_NODE(SoSwitchToChild, switchToFacet)
+    CREATE_NODE(SoSwitchToChild, switchToEdge)
     CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoColorMask, colorMask2)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoLightModel, lightModel)
-    CREATE_NODE(SoDrawStyle, dashedLinestyle)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
+    CREATE_NODE(SoLightModel, lightModel)
+    CREATE_NODE(SoSwitch, wireStyleSwitch)
+    CREATE_NODE(SoDrawStyle, dashedLinestyle)
     CREATE_NODE(SoBaseColor, dimColor)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
@@ -1974,22 +1960,20 @@ void InventorEx::wireframe()
         {m_root, new SoGradientBackground},
         {m_root, firstPassSeparator},
         {m_root, secondPassSeparator},
-        {m_root, thirdPassSeparator},
         {firstPassSeparator, colorMask},
-        {firstPassSeparator, polygonOffset},
-        {firstPassSeparator, facets},
-        {secondPassSeparator, colorMask2},// colorMask2是否应该放到firstPassSeparator尾
+        {firstPassSeparator, switchToFacet},
+        {firstPassSeparator, bodies},
+        {firstPassSeparator, colorMask2},
         {secondPassSeparator, lightModel},
-        {secondPassSeparator, edges},
-        {thirdPassSeparator, depthbuffer},
-        {thirdPassSeparator, lightModel},
-        {thirdPassSeparator, wireStyleSwitch},
-        {wireStyleSwitch, dashedEdges},
-        {wireStyleSwitch, dimEdges},
-        {dashedEdges, dashedLinestyle},
-        {dashedEdges, edges},
-        {dimEdges, dimColor},
-        {dimEdges, edges},// 淡化线需要做两方面，一个是edges中线颜色的设置，一个是如何不影响已有的线，可以从颜色相加或是depthBuffer判断入手
+        {secondPassSeparator, switchToEdge},
+        {secondPassSeparator, bodies},
+        {secondPassSeparator, hiddenEdgesSwitch},
+        {hiddenEdgesSwitch, hiddenEdgesSeparator},
+        {hiddenEdgesSeparator, depthbuffer},
+        {hiddenEdgesSeparator, wireStyleSwitch},
+        {hiddenEdgesSeparator, bodies},
+        {wireStyleSwitch, dashedLinestyle},
+        {wireStyleSwitch, dimColor},
     };
     for (const auto& relationship : relationships)
     {
@@ -1997,21 +1981,7 @@ void InventorEx::wireframe()
     }
     for (const auto& data : randomCuboids) 
     {
-        ADD_CHILD(facets, assembleBodyScene(data));
-        ADD_CHILD(edges, assembleBodyScene(data));
-    }
-
-    std::vector<SoSwitch*> lineSwitchVec;
-    lineSwitchVec = searchNodes<SoSwitch>(facets, "lineSwitch");// 使用全局变量、assembleBodyScene传参进行效率优化
-    for (auto& node : lineSwitchVec)
-    {
-        node->whichChild = SO_SWITCH_NONE;
-    }
-    std::vector<SoSwitch*> faceSwitchVec;
-    faceSwitchVec = searchNodes<SoSwitch>(edges, "faceSwitch");
-    for (auto& node : faceSwitchVec)
-    {
-        node->whichChild = SO_SWITCH_NONE;
+        ADD_CHILD(bodies, assembleBodyScene(data));
     }
 
     colorMask->red = FALSE;
@@ -2019,13 +1989,28 @@ void InventorEx::wireframe()
     colorMask->blue = FALSE;
     colorMask->alpha = FALSE;
 
+    switchToFacet->switchName = "frameSwitch";
+    switchToFacet->toWhichChild = 0;
+    switchToFacet->searchRange = bodies;
+    switchToEdge->switchName = "frameSwitch";
+    switchToEdge->toWhichChild = 1;
+    switchToEdge->searchRange = bodies;
+
     depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
     lightModel->model = SoLightModel::BASE_COLOR;// 渲染将只使用当前材质的漫反射颜色和透明度
 
     std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim" << std::endl;
-    int option = -1;
+    int option = SO_SWITCH_NONE;
     std::cin >> option;
-    wireStyleSwitch->whichChild = option;
+    if (-1 == option)
+    {
+        hiddenEdgesSwitch->whichChild = SO_SWITCH_NONE;
+    }
+    else
+    {
+        hiddenEdgesSwitch->whichChild = 0;
+        wireStyleSwitch->whichChild = option;
+    }
 
     dashedLinestyle->linePattern.setValue(0xff00);
 

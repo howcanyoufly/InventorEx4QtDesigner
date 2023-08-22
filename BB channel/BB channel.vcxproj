@@ -134,11 +134,13 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SoColorMask.cpp" />
     <ClCompile Include="SoGradientBackground.cpp" />
+    <ClCompile Include="SoSwitchToChild.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h" />
     <ClInclude Include="SoColorMask.h" />
     <ClInclude Include="SoGradientBackground.h" />
+    <ClInclude Include="SoSwitchToChild.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
