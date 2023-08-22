@@ -39,7 +39,7 @@ SoColorMask::~SoColorMask()
 
 }
 
-
+// 怎么才能让colorMask渲染其后的节点后自动恢复
 void SoColorMask::GLRender(SoGLRenderAction* action)
 {
     // only draw into depth buffer

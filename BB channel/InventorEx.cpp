@@ -90,6 +90,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"whyNotRerender", std::bind(&InventorEx::whyNotRerender, this)},
         {"hiddenLine", std::bind(&InventorEx::hiddenLine, this)},
         {"wireframe", std::bind(&InventorEx::wireframe, this)},
+        {"pointInCube", std::bind(&InventorEx::pointInCube, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -1910,6 +1911,18 @@ std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids
 }
 
 /*
+    "faces are first rendered with #red, #green, #blue and #alpha masks
+    to FALSE, so that only depth is written. Then, the shape is rendered in
+    wireframe mode, with all masks to TRUE."
+
+Why can't we set color masks during the individual body rendering process?
+    Doing so can make the hidden effect dependent on the rendering order of the bodies.
+    Consider two cubes as an example: The facets of the first cube are written to the depth buffer,
+    followed by the rendering of its edges based on that depth buffer — everything appears correct up to this point.
+    However, when the facets of the second cube pass the depth test and write to the depth buffer,
+    they don't update the color buffer. As a result, the edges of the first cube aren't obscured by the facets of the second cube.
+    Essentially, you cannot hide edges using facets that haven't been rendered yet.
+
 m_root
 │
 ├── SoGradientBackground
@@ -1938,7 +1951,7 @@ m_root
 */
 void InventorEx::wireframe()
 {
-    std::vector<ShapeData> randomCuboids = generateRandomCuboids(20, 5.0);
+    std::vector<ShapeData> randomCuboids = generateRandomCuboids(20/*count*/, 5.0/*size*/);
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
     CREATE_NODE(SoSeparator, facets)
@@ -1962,7 +1975,7 @@ void InventorEx::wireframe()
         {m_root, firstPassSeparator},
         {m_root, secondPassSeparator},
         {m_root, thirdPassSeparator},
-        {firstPassSeparator, colorMask},// 有没有让colorMask自动恢复
+        {firstPassSeparator, colorMask},
         {firstPassSeparator, polygonOffset},
         {firstPassSeparator, facets},
         {secondPassSeparator, colorMask2},// colorMask2是否应该放到firstPassSeparator尾
@@ -2006,16 +2019,64 @@ void InventorEx::wireframe()
     colorMask->blue = FALSE;
     colorMask->alpha = FALSE;
 
+    depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
     lightModel->model = SoLightModel::BASE_COLOR;// 渲染将只使用当前材质的漫反射颜色和透明度
 
-    std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim(todo)" << std::endl;
+    std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim" << std::endl;
     int option = -1;
     std::cin >> option;
     wireStyleSwitch->whichChild = option;
 
     dashedLinestyle->linePattern.setValue(0xff00);
-    depthbuffer->function = SoDepthBuffer::NOTEQUAL;
 
     dimColor->setOverride(TRUE);
     dimColor->rgb.setValue(0.5, 0.5, 0.5);
+
+}
+
+void InventorEx::pointInCube()
+{
+    CREATE_NODE(SoCube, cube);
+    CREATE_NODE(SoCube, point);
+    CREATE_NODE(SoMaterial, material);
+    CREATE_NODE(SoDepthBuffer, depthbuffer)
+    CREATE_NODE(SoLightModel, lightModel)
+    CREATE_NODE(SoPointLight, light1)
+    CREATE_NODE(SoPointLight, light2)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        //{m_root, cube},
+        {m_root, depthbuffer},
+        {m_root, lightModel},
+        {m_root, light1},
+        {m_root, light2},
+        {m_root, material},
+        {m_root, point},
+    };
+
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    cube->width = 1.0;
+    cube->height = 1.0;
+    cube->depth = 1.0;
+    point->width = 0.2;
+    point->height = 0.2;
+    point->depth = 0.2;
+
+    material->diffuseColor.setValue(1.0, 0.0, 0.0);
+    material->specularColor.setValue(1.0, 0.0, 0.0);
+    depthbuffer->function = SoDepthBuffer::ALWAYS;
+    depthbuffer->range.setValue(0.0, 1.0);
+    std::cout << "0 for Base_Color\n1 for Phong" << std::endl;
+    int model;
+    std::cin >> model;
+
+    lightModel->model = (SoLightModel::Model)model;
+
+    light1->location.setValue(1.5, 1.5, 1.5);
+    light2->location.setValue(0.5, 0.5, 0.5);
 }

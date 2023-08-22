@@ -80,6 +80,7 @@ private:
     std::vector<ShapeData> generateRandomCuboids(int count, float maxSize);// count for quentity and maxSize for volume
     void wireframe();
 
+    void pointInCube();
 
     // plugins
     void loadPickAndWrite();
@@ -97,7 +98,7 @@ private:
     QuarterWidget* m_viewer;
     SoSeparator* m_root;
 
-    bool m_reset;// function did but plugin did not
+    bool m_reset;// function does but plugin does not
 };
 
 
