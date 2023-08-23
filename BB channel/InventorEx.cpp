@@ -48,6 +48,8 @@
 #include "SoColorMask.h"
 #include "SoSwitchToChild.h"
 
+#include "utils.h"
+
 
 #define CREATE_NODE(type, name) \
     type* name = new type; \
@@ -1755,6 +1757,12 @@ void InventorEx::hiddenLine()
 }
 
 /*
+About polygonOffset:
+    With the position of the polygonOffset node being placed before the frameSwitch, the question arises: what's its effective range?
+    Typically, it affects the closest shape node. If a separator node is placed behind it, the entire separator node will be influenced by the offset.
+    Interestingly, though polygonOffset affects the whole frameSwitch which contains faceRoot and lineRoot both, how does it manage to serve its purpose?
+    Notably, since polygon offset doesn't have an impact on non-polygonal geometry, primitives such as SoLineSet and SoPointSet are unaffected by SoPolygonOffset().
+
 bodySwitch
 │
 └── body
@@ -1768,7 +1776,7 @@ bodySwitch
             ├── shadeWithoutEdge
             ├── transluency
             ├── staticWireframe
-            │   ├── offset
+            │   ├── polygonOffset
             │   └── frameSwitch
             │       ├── faceRoot
             │       │   ├── faceStyle
@@ -1778,8 +1786,18 @@ bodySwitch
             │       │   │   └── transparentMaterial
             │       │   └── faceSet
             │       └── lineRoot
-            │           └── lineSet
+            │           ├── lineVisibleRoot
+            │           │   └── [*]lineSet
+            │           └── lineHiddenSwitch
+            │               └── lineHiddenRoot
+            │                   ├── depthbuffer
+            │                   ├── wireStyleSwitch
+            │                   │   ├── dashedLinestyle
+            │                   │   └── dimColor
+            │                   └── [*]lineSet
             └── wireframeWithoutHidden
+
+    [*]: shared node
 */
 SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
 {
@@ -1798,7 +1816,7 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoSeparator, wireframeWithoutHidden)
     CREATE_NODE(SoSwitch, frameSwitch)
     CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoPolygonOffset, offset)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
     CREATE_NODE(SoDrawStyle, faceStyle)
     CREATE_NODE(SoNormal, faceNormal)
     CREATE_NODE(SoNormalBinding, normalBinding)
@@ -1806,6 +1824,13 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoMaterial, transparentMaterial)
     CREATE_NODE(SoIndexedFaceSet, faceSet)
     CREATE_NODE(SoSeparator, lineRoot)
+    CREATE_NODE(SoSeparator, lineVisibleRoot)
+    CREATE_NODE(SoSwitch, lineHiddenSwitch)
+    CREATE_NODE(SoSeparator, lineHiddenRoot)
+    CREATE_NODE(SoDepthBuffer, depthbuffer)
+    CREATE_NODE(SoSwitch, wireStyleSwitch)
+    CREATE_NODE(SoDrawStyle, dashedLinestyle)
+    CREATE_NODE(SoBaseColor, dimColor)
     CREATE_NODE(SoIndexedLineSet, lineSet)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships = 
@@ -1822,7 +1847,7 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {renderModeSwitch, transluency},
         {renderModeSwitch, staticWireframe},
         {renderModeSwitch, wireframeWithoutHidden},
-        {staticWireframe, offset},
+        {staticWireframe, polygonOffset},
         {staticWireframe, frameSwitch},
         {frameSwitch, faceRoot},
         {frameSwitch, lineRoot},
@@ -1832,7 +1857,15 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {faceRoot, materialSwitch},
         {faceRoot, faceSet},
         {materialSwitch, transparentMaterial},
-        {lineRoot, lineSet},
+        {lineRoot, lineVisibleRoot},
+        {lineRoot, lineHiddenSwitch},
+        {lineVisibleRoot, lineSet},
+        {lineHiddenSwitch, lineHiddenRoot},
+        {lineHiddenRoot, depthbuffer},
+        {lineHiddenRoot, wireStyleSwitch},
+        {wireStyleSwitch, dashedLinestyle},
+        {wireStyleSwitch, dimColor},
+        {lineHiddenRoot, lineSet},
     };
     for (const auto& relationship : relationships) 
     {
@@ -1842,7 +1875,13 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     bodySwitch->whichChild = 0;
     trasparencyTypeSwitch->whichChild = 0;
     renderModeSwitch->whichChild = 3;
-    frameSwitch->whichChild = 0;
+    frameSwitch->whichChild = 0;// for adaptive view
+
+    depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
+
+    dashedLinestyle->linePattern.setValue(0xff00);
+
+    dimColor->rgb.setValue(0.5, 0.5, 0.5);
 
     coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
     faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
@@ -1926,14 +1965,8 @@ m_root
 └── secondPassSeparator
     ├── lightModel
     ├── switchToEdge
-    ├── [*]bodies
-    └── hiddenEdgesSwitch
-        └── hiddenEdgesSeparator
-            ├── depthbuffer
-            ├── wireStyleSwitch
-            │   ├─ dashedLinestyle
-            │   └─ dimColor
-            └── [*]bodies
+    └── [*]bodies
+
     [*]: shared node
 */
 void InventorEx::wireframe()
@@ -1942,18 +1975,12 @@ void InventorEx::wireframe()
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
     CREATE_NODE(SoSeparator, secondPassSeparator)
-    CREATE_NODE(SoSwitch, hiddenEdgesSwitch)
-    CREATE_NODE(SoSeparator, hiddenEdgesSeparator)
     CREATE_NODE(SoSeparator, bodies)
     CREATE_NODE(SoSwitchToChild, switchToFacet)
     CREATE_NODE(SoSwitchToChild, switchToEdge)
     CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoColorMask, colorMask2)
-    CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoLightModel, lightModel)
-    CREATE_NODE(SoSwitch, wireStyleSwitch)
-    CREATE_NODE(SoDrawStyle, dashedLinestyle)
-    CREATE_NODE(SoBaseColor, dimColor)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
@@ -1967,13 +1994,6 @@ void InventorEx::wireframe()
         {secondPassSeparator, lightModel},
         {secondPassSeparator, switchToEdge},
         {secondPassSeparator, bodies},
-        {secondPassSeparator, hiddenEdgesSwitch},
-        {hiddenEdgesSwitch, hiddenEdgesSeparator},
-        {hiddenEdgesSeparator, depthbuffer},
-        {hiddenEdgesSeparator, wireStyleSwitch},
-        {hiddenEdgesSeparator, bodies},
-        {wireStyleSwitch, dashedLinestyle},
-        {wireStyleSwitch, dimColor},
     };
     for (const auto& relationship : relationships)
     {
@@ -1992,31 +2012,31 @@ void InventorEx::wireframe()
     switchToFacet->switchName = "frameSwitch";
     switchToFacet->toWhichChild = 0;
     switchToFacet->searchRange = bodies;
+
     switchToEdge->switchName = "frameSwitch";
     switchToEdge->toWhichChild = 1;
     switchToEdge->searchRange = bodies;
 
-    depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
     lightModel->model = SoLightModel::BASE_COLOR;// 渲染将只使用当前材质的漫反射颜色和透明度
 
     std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim" << std::endl;
-    int option = SO_SWITCH_NONE;
+    int option = -1;
     std::cin >> option;
-    if (-1 == option)
+    if (-1 != option)
     {
-        hiddenEdgesSwitch->whichChild = SO_SWITCH_NONE;
+        std::vector<SoSwitch*> switchVec;
+        switchVec = searchNodes<SoSwitch>(bodies, "lineHiddenSwitch");
+        for (auto& node : switchVec)
+        {
+            node->whichChild = 0;
+        }
+
+        switchVec = searchNodes<SoSwitch>(bodies, "wireStyleSwitch");
+        for (auto& node : switchVec)
+        {
+            node->whichChild = option;
+        }
     }
-    else
-    {
-        hiddenEdgesSwitch->whichChild = 0;
-        wireStyleSwitch->whichChild = option;
-    }
-
-    dashedLinestyle->linePattern.setValue(0xff00);
-
-    dimColor->setOverride(TRUE);
-    dimColor->rgb.setValue(0.5, 0.5, 0.5);
-
 }
 
 void InventorEx::pointInCube()

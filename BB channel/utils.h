@@ -7,7 +7,7 @@
 #include "InventorEx.h"
 
 
-SoSeparator* readFile(const char* filename)
+inline SoSeparator* readFile(const char* filename)
 {
     // Open the input file
     SoInput mySceneInput;
