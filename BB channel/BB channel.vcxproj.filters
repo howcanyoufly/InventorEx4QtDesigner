@@ -30,6 +30,12 @@
     <ClCompile Include="SoSwitchToChild.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="SoColorMaskElement.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="SoGLColorMaskElement.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h">
@@ -45,6 +51,15 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="SoSwitchToChild.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SoColorMaskElement.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SbBasicP.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SoGLColorMaskElement.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

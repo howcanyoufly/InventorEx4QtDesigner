@@ -10,11 +10,11 @@
 #endif // __APPLE__
 #include "SoColorMask.h"
 #include "Inventor/misc/SoState.h"
+#include <Inventor/actions/SoCallbackAction.h>
 #include "Inventor/actions/SoGLRenderAction.h"
-#include "Inventor/elements/SoMaterialBindingElement.h"
-#include "Inventor/elements/SoLightModelElement.h"
-#include "Inventor/elements/SoPolygonOffsetElement.h"
 #include "Inventor/elements/SoOverrideElement.h"
+#include "SoColorMaskElement.h"
+#include "SoGLColorMaskElement.h"
 
 SO_NODE_SOURCE(SoColorMask);
 
@@ -25,7 +25,6 @@ SoColorMask::SoColorMask() :
     blue(),
     alpha()
 {
-
     SO_NODE_CONSTRUCTOR(SoColorMask);
 
     SO_NODE_ADD_FIELD(red, (TRUE));
@@ -39,12 +38,9 @@ SoColorMask::~SoColorMask()
 
 }
 
-// 怎么才能让colorMask渲染其后的节点后自动恢复
 void SoColorMask::GLRender(SoGLRenderAction* action)
 {
-    // only draw into depth buffer
-    glColorMask(red.getValue(), green.getValue(), blue.getValue(), alpha.getValue());
-
+    SoColorMask::doAction((SoAction*)action);
 }
 
 SbBool SoColorMask::affectsState() const
@@ -52,9 +48,40 @@ SbBool SoColorMask::affectsState() const
     return true;
 }
 
+void SoColorMask::doAction(SoAction* action)
+{
+    //SoState* state = action->getState();
+
+    //if (SoOverrideElement::getPolygonOffsetOverride(state)) return;
+
+    SbBool redVal;
+    SbBool greenVal;
+    SbBool blueVal;
+    SbBool alphaVal;
+
+    redVal = this->red.getValue();
+    greenVal = this->green.getValue();
+    blueVal = this->blue.getValue();
+    alphaVal = this->alpha.getValue();
+
+    SoColorMaskElement::set(action->getState(), this, redVal, greenVal, blueVal, alphaVal);
+
+    //if (this->isOverride()) {
+    //    SoOverrideElement::setPolygonOffsetOverride(state, this, TRUE);
+    //}
+}
+
+void SoColorMask::callback(SoCallbackAction* action)
+{
+    SoColorMask::doAction((SoAction*)action);
+}
+
 void SoColorMask::initClass()
 {
     SO_NODE_INIT_CLASS(SoColorMask, SoNode, "Node");
+
+    SO_ENABLE(SoCallbackAction, SoColorMaskElement);
+    SO_ENABLE(SoGLRenderAction, SoGLColorMaskElement);
 }
 
 void SoColorMask::exitClass()

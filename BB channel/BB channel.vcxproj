@@ -133,12 +133,17 @@
     <ClCompile Include="InventorEx.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SoColorMask.cpp" />
+    <ClCompile Include="SoColorMaskElement.cpp" />
+    <ClCompile Include="SoGLColorMaskElement.cpp" />
     <ClCompile Include="SoGradientBackground.cpp" />
     <ClCompile Include="SoSwitchToChild.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h" />
+    <ClInclude Include="SbBasicP.h" />
     <ClInclude Include="SoColorMask.h" />
+    <ClInclude Include="SoColorMaskElement.h" />
+    <ClInclude Include="SoGLColorMaskElement.h" />
     <ClInclude Include="SoGradientBackground.h" />
     <ClInclude Include="SoSwitchToChild.h" />
     <ClInclude Include="utils.h" />

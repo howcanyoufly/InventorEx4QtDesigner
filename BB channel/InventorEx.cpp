@@ -46,6 +46,8 @@
 
 #include "SoGradientBackground.h"
 #include "SoColorMask.h"
+#include "SoColorMaskElement.h"
+#include "SoGLColorMaskElement.h"
 #include "SoSwitchToChild.h"
 
 #include "utils.h"
@@ -110,6 +112,8 @@ InventorEx::InventorEx(int argc, char** argv)
     // Remember to initialize the custom node!
     SoOITNode::initClass();  
     SoGradientBackground::initClass();
+    SoColorMaskElement::initClass();
+    SoGLColorMaskElement::initClass();
     SoColorMask::initClass();
     SoSwitchToChild::initClass();
 
@@ -1959,8 +1963,7 @@ m_root
 ©À©¤©¤ firstPassSeparator
 ©¦   ©À©¤©¤ colorMask
 ©¦   ©À©¤©¤ switchToFacet
-©¦   ©À©¤©¤ [*]bodies
-©¦   ©¸©¤©¤ colorMask2
+©¦   ©¸©¤©¤ [*]bodies
 ©¦
 ©¸©¤©¤ secondPassSeparator
     ©À©¤©¤ lightModel
@@ -1979,7 +1982,6 @@ void InventorEx::wireframe()
     CREATE_NODE(SoSwitchToChild, switchToFacet)
     CREATE_NODE(SoSwitchToChild, switchToEdge)
     CREATE_NODE(SoColorMask, colorMask)
-    CREATE_NODE(SoColorMask, colorMask2)
     CREATE_NODE(SoLightModel, lightModel)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
@@ -1990,7 +1992,6 @@ void InventorEx::wireframe()
         {firstPassSeparator, colorMask},
         {firstPassSeparator, switchToFacet},
         {firstPassSeparator, bodies},
-        {firstPassSeparator, colorMask2},
         {secondPassSeparator, lightModel},
         {secondPassSeparator, switchToEdge},
         {secondPassSeparator, bodies},

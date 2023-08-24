@@ -77,6 +77,9 @@ public:
 SoEXTENDER public:
     virtual void GLRender(SoGLRenderAction* action);
     virtual SbBool affectsState() const;
+    virtual void doAction(SoAction* action);
+    virtual void callback(SoCallbackAction* action);
+
 
 SoINTERNAL public:
 
