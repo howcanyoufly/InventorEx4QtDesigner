@@ -5,6 +5,7 @@
 #include <Inventor/nodes/SoNode.h>
 #include <Inventor/nodes/SoCone.h>
 #include <Inventor/nodes/SoCube.h>
+#include <Inventor/nodes/SoCylinder.h>
 #include <Inventor/nodes/SoText3.h>
 #include <Inventor/nodes/SoDirectionalLight.h>
 #include <Inventor/nodes/SoMaterial.h>
@@ -95,6 +96,9 @@ InventorEx::InventorEx(int argc, char** argv)
         {"hiddenLine", std::bind(&InventorEx::hiddenLine, this)},
         {"wireframe", std::bind(&InventorEx::wireframe, this)},
         {"pointInCube", std::bind(&InventorEx::pointInCube, this)},
+        {"colorMaskTest", std::bind(&InventorEx::colorMaskTest, this)},
+        {"cylinder", std::bind(&InventorEx::cylinder, this)},
+        {"separateDepthTests", std::bind(&InventorEx::separateDepthTests, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -2042,6 +2046,7 @@ void InventorEx::wireframe()
 
 void InventorEx::pointInCube()
 {
+    CREATE_NODE(SoSeparator, separator)
     CREATE_NODE(SoCube, cube);
     CREATE_NODE(SoCube, point);
     CREATE_NODE(SoMaterial, material);
@@ -2053,12 +2058,11 @@ void InventorEx::pointInCube()
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         //{m_root, cube},
-        {m_root, depthbuffer},
-        {m_root, lightModel},
-        {m_root, light1},
-        {m_root, light2},
-        {m_root, material},
-        {m_root, point},
+        {m_root, separator},
+        {separator, depthbuffer},
+        {separator, lightModel},
+        {separator, material},
+        {separator, point},
     };
 
     for (const auto& relationship : relationships)
@@ -2085,4 +2089,101 @@ void InventorEx::pointInCube()
 
     light1->location.setValue(1.5, 1.5, 1.5);
     light2->location.setValue(0.5, 0.5, 0.5);
+}
+
+void InventorEx::colorMaskTest()
+{
+    CREATE_NODE(SoSeparator, sep)
+    CREATE_NODE(SoCube, cube);
+    CREATE_NODE(SoSphere, sphere);
+    CREATE_NODE(SoCone, cone);
+    CREATE_NODE(SoColorMask, colorMask);
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, sep},
+        {m_root, sphere},
+        {sep, colorMask},
+        {sep, cone},
+        {sep, cube},
+    };
+
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    cube->width = 1.0;
+    cube->height = 1.0;
+    cube->depth = 1.0;
+    sphere->radius = 1.4;
+    cone->bottomRadius = 1.0;
+    cone->height = 2.0;
+
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+}
+
+void InventorEx::cylinder()
+{
+    CREATE_NODE(SoCylinder, cylinder);
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, cylinder},
+    };
+
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    cylinder->radius = 1.0;
+    cylinder->height = 2.0;
+
+}
+
+void clearDepthBufferCB(void* userdata, SoAction* action) 
+{
+    if (action->isOfType(SoGLRenderAction::getClassTypeId())) 
+    {
+        glClear(GL_DEPTH_BUFFER_BIT);
+    }
+}
+
+void InventorEx::separateDepthTests()
+{
+    CREATE_NODE(SoSeparator, separator)
+    CREATE_NODE(SoCube, cube);
+    CREATE_NODE(SoCube, point);
+    CREATE_NODE(SoMaterial, material);
+    CREATE_NODE(SoCallback, cleanDepthBuffCB);
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, cube},
+        {m_root, separator},
+        {separator, material},
+        {separator, cleanDepthBuffCB},
+        {separator, point},
+    };
+
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    cube->width = 1.0;
+    cube->height = 1.0;
+    cube->depth = 1.0;
+    point->width = 0.2;
+    point->height = 0.2;
+    point->depth = 0.2;
+
+    material->diffuseColor.setValue(1.0, 0.0, 0.0);
+    material->specularColor.setValue(1.0, 0.0, 0.0);
+
+    cleanDepthBuffCB->setCallback(clearDepthBufferCB);
 }

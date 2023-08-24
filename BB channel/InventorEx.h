@@ -82,6 +82,12 @@ private:
 
     void pointInCube();
 
+    void colorMaskTest();
+
+    void cylinder();
+
+    void separateDepthTests();
+
     // plugins
     void loadPickAndWrite();
     void loadErrorHandle();
