@@ -88,6 +88,10 @@ private:
 
     void separateDepthTests();
 
+    void simulationPhongCalculate();
+
+    void cylinderGL();
+
     // plugins
     void loadPickAndWrite();
     void loadErrorHandle();

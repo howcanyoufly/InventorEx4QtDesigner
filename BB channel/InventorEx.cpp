@@ -61,6 +61,8 @@
 #define ADD_CHILD(parent, child) \
     parent->addChild(child);
 
+#define WindowWidth 1200
+#define WindowHeight 900
 
 static int s_renderCountForDebug = 0;
 
@@ -97,8 +99,10 @@ InventorEx::InventorEx(int argc, char** argv)
         {"wireframe", std::bind(&InventorEx::wireframe, this)},
         {"pointInCube", std::bind(&InventorEx::pointInCube, this)},
         {"colorMaskTest", std::bind(&InventorEx::colorMaskTest, this)},
-        {"cylinder", std::bind(&InventorEx::cylinder, this)},
+        {"cylinderIV", std::bind(&InventorEx::cylinder, this)},
         {"separateDepthTests", std::bind(&InventorEx::separateDepthTests, this)},
+        {"simulationPhongCalculate", std::bind(&InventorEx::simulationPhongCalculate, this)},
+        {"cylinderGL", std::bind(&InventorEx::cylinderGL, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -122,7 +126,7 @@ InventorEx::InventorEx(int argc, char** argv)
     SoSwitchToChild::initClass();
 
     m_mainwin = new QMainWindow();
-    m_mainwin->resize(1200, 900);
+    m_mainwin->resize(WindowWidth, WindowHeight);
 
     // Create a QuarterWidget for displaying a Coin scene graph
     m_viewer = new QuarterWidget(m_mainwin);
@@ -160,7 +164,7 @@ void InventorEx::resetScene()
     m_mainwin = nullptr;
 
     m_mainwin = new QMainWindow();
-    m_mainwin->resize(1200, 900);
+    m_mainwin->resize(WindowWidth, WindowHeight);
     m_viewer = new QuarterWidget(m_mainwin);
 
     m_viewer->setNavigationModeFile();
@@ -398,7 +402,7 @@ void InventorEx::sphere()
 void InventorEx::cube()
 {
     SoMaterial* material = new SoMaterial;
-    material->transparency = 1.0;
+    material->diffuseColor.setValue(1, 0, 0);
     m_root->addChild(material);
 
     m_root->addChild(new SoCube);
@@ -1300,7 +1304,7 @@ void callbackRoutine(void*, SoAction* action)
     glColor3f(0.0f, 0.7f, 0.0f);
     glLineWidth(2);
     glDisable(GL_LIGHTING);  // so we don't have to set normals
-    drawFloor();
+    //drawFloor();
     drawAxisCross();
     glEnable(GL_LIGHTING);
     glLineWidth(1);
@@ -2070,12 +2074,12 @@ void InventorEx::pointInCube()
         ADD_CHILD(relationship.first, relationship.second);
     }
 
-    cube->width = 1.0;
-    cube->height = 1.0;
-    cube->depth = 1.0;
-    point->width = 0.2;
-    point->height = 0.2;
-    point->depth = 0.2;
+    cube->width = 10;
+    cube->height = 10;
+    cube->depth = 10;
+    point->width = 2;
+    point->height = 2;
+    point->depth = 2;
 
     material->diffuseColor.setValue(1.0, 0.0, 0.0);
     material->specularColor.setValue(1.0, 0.0, 0.0);
@@ -2186,4 +2190,112 @@ void InventorEx::separateDepthTests()
     material->specularColor.setValue(1.0, 0.0, 0.0);
 
     cleanDepthBuffCB->setCallback(clearDepthBufferCB);
+}
+
+void InventorEx::simulationPhongCalculate()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        //0, 3, 2, SO_END_FACE_INDEX,
+        //0, 1, 5, SO_END_FACE_INDEX,
+        //0, 5, 4, SO_END_FACE_INDEX,
+        //1, 2, 6, SO_END_FACE_INDEX,
+        //1, 6, 5, SO_END_FACE_INDEX,
+        //2, 3, 6, SO_END_FACE_INDEX,
+        //3, 7, 6, SO_END_FACE_INDEX,
+        //3, 4, 7, SO_END_FACE_INDEX,
+        //0, 4, 3, SO_END_FACE_INDEX,
+        //4, 5, 7, SO_END_FACE_INDEX,
+        //5, 6, 7, SO_END_FACE_INDEX,
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+    int32_t faceIndicesInward[48] = {
+        0, 1, 2, SO_END_FACE_INDEX,
+        0, 2, 3, SO_END_FACE_INDEX,
+        0, 5, 1, SO_END_FACE_INDEX,
+        0, 4, 5, SO_END_FACE_INDEX,
+        1, 6, 2, SO_END_FACE_INDEX,
+        1, 5, 6, SO_END_FACE_INDEX,
+        2, 6, 3, SO_END_FACE_INDEX,
+        3, 6, 7, SO_END_FACE_INDEX,
+        3, 7, 4, SO_END_FACE_INDEX,
+        0, 3, 4, SO_END_FACE_INDEX,
+        4, 7, 5, SO_END_FACE_INDEX,
+        5, 7, 6, SO_END_FACE_INDEX,
+    };
+
+    SoSeparator* sep = new SoSeparator;
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoIndexedFaceSet* faceSetInward = new SoIndexedFaceSet;
+    SoMaterial* material = new SoMaterial;
+    SoDepthBuffer* depthBuffer = new SoDepthBuffer;
+
+    material->diffuseColor.setValue(1, 0, 0);
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 8, faceIndices);
+    faceSetInward->coordIndex.setValues(0, 48, faceIndices);
+    depthBuffer->test = false;
+
+
+    m_root->addChild(sep);
+    sep->addChild(material);
+    sep->addChild(coords);
+    sep->addChild(depthBuffer);
+    sep->addChild(faceSet);
+    //sep->addChild(faceSetInward);
+
+}
+
+
+void drawCylinderOutline(void*, SoAction* action)
+{
+    float radius = 1.0f;
+    float height = 4.0f;
+    int segments = 20;
+    // Draw top circle
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < segments; i++) {
+        float angle = 2.0 * M_PI * i / segments;
+        float x = radius * cos(angle);
+        float z = radius * sin(angle);
+        glVertex3f(x, height, z);
+    }
+    glEnd();
+
+    // Draw bottom circle
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < segments; i++) {
+        float angle = 2.0 * M_PI * i / segments;
+        float x = radius * cos(angle);
+        float z = radius * sin(angle);
+        glVertex3f(x, 0.0f, z);
+    }
+    glEnd();
+
+    // Draw the side lines
+    glBegin(GL_LINES);
+    glVertex3f(radius, 0.0f, 0.0f);  // bottom right
+    glVertex3f(radius, height, 0.0f);  // top right
+
+    glVertex3f(-radius, 0.0f, 0.0f);  // bottom left
+    glVertex3f(-radius, height, 0.0f);  // top left
+    glEnd();
+}
+
+void InventorEx::cylinderGL()
+{
+    SoCallback* cb = new SoCallback;
+    cb->setCallback(drawCylinderOutline);
+    m_root->addChild(cb);
 }
