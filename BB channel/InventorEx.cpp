@@ -51,6 +51,7 @@
 #include "SoColorMaskElement.h"
 #include "SoGLColorMaskElement.h"
 #include "SoSwitchToChild.h"
+#include "SoDeferredRender.h"
 
 #include "utils.h"
 
@@ -125,6 +126,7 @@ InventorEx::InventorEx(int argc, char** argv)
     SoGLColorMaskElement::initClass();
     SoColorMask::initClass();
     SoSwitchToChild::initClass();
+    SoDeferredRender::initClass();
 
     m_mainwin = new QMainWindow();
     m_mainwin->resize(WindowWidth, WindowHeight);
@@ -1790,24 +1792,19 @@ bodySwitch
             ├── transluency
             ├── staticWireframe
             │   ├── polygonOffset
-            │   └── frameSwitch
-            │       ├── faceRoot
-            │       │   ├── faceStyle
-            │       │   ├── faceNormal
-            │       │   ├── normalBinding
-            │       │   ├── materialSwitch
-            │       │   │   └── transparentMaterial
-            │       │   └── faceSet
-            │       └── lineRoot
-            │           ├── lineVisibleRoot
-            │           │   └── [*]lineSet
-            │           └── lineHiddenSwitch
-            │               └── lineHiddenRoot
-            │                   ├── depthbuffer
-            │                   ├── wireStyleSwitch
-            │                   │   ├── dashedLinestyle
-            │                   │   └── dimColor
-            │                   └── [*]lineSet
+            │   ├── faceRoot
+            │   │   ├── colorMask (SoColorMask)
+            │   │   └── faceSet
+            │   └── lineRoot (SoDeferredRender)
+            │       ├── lineVisibleRoot
+            │       │   └── [*]lineSet
+            │       └── lineHiddenSwitch
+            │           └── lineHiddenRoot
+            │               ├── depthbuffer
+            │               ├── wireStyleSwitch
+            │               │   ├── dashedLinestyle
+            │               │   └── dimColor
+            │               └── [*]lineSet
             └── wireframeWithoutHidden
 
     [*]: shared node
@@ -1827,16 +1824,11 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoSeparator, transluency)
     CREATE_NODE(SoSeparator, staticWireframe)
     CREATE_NODE(SoSeparator, wireframeWithoutHidden)
-    CREATE_NODE(SoSwitch, frameSwitch)
-    CREATE_NODE(SoSeparator, faceRoot)
     CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoDrawStyle, faceStyle)
-    CREATE_NODE(SoNormal, faceNormal)
-    CREATE_NODE(SoNormalBinding, normalBinding)
-    CREATE_NODE(SoSwitch, materialSwitch)
-    CREATE_NODE(SoMaterial, transparentMaterial)
+    CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoIndexedFaceSet, faceSet)
-    CREATE_NODE(SoSeparator, lineRoot)
+    CREATE_NODE(SoDeferredRender, lineRoot)
     CREATE_NODE(SoSeparator, lineVisibleRoot)
     CREATE_NODE(SoSwitch, lineHiddenSwitch)
     CREATE_NODE(SoSeparator, lineHiddenRoot)
@@ -1861,15 +1853,10 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {renderModeSwitch, staticWireframe},
         {renderModeSwitch, wireframeWithoutHidden},
         {staticWireframe, polygonOffset},
-        {staticWireframe, frameSwitch},
-        {frameSwitch, faceRoot},
-        {frameSwitch, lineRoot},
-        {faceRoot, faceStyle},
-        {faceRoot, faceNormal},
-        {faceRoot, normalBinding},
-        {faceRoot, materialSwitch},
+        {staticWireframe, faceRoot},
+        {staticWireframe, lineRoot},
+        {faceRoot, colorMask},
         {faceRoot, faceSet},
-        {materialSwitch, transparentMaterial},
         {lineRoot, lineVisibleRoot},
         {lineRoot, lineHiddenSwitch},
         {lineVisibleRoot, lineSet},
@@ -1888,9 +1875,13 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     bodySwitch->whichChild = 0;
     trasparencyTypeSwitch->whichChild = 0;
     renderModeSwitch->whichChild = 3;
-    frameSwitch->whichChild = 0;// for adaptive view
 
-    depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+
+    depthbuffer->function = SoDepthBuffer::GREATER;// 仅绘制隐藏片段
 
     dashedLinestyle->linePattern.setValue(0xff00);
 
@@ -1971,17 +1962,7 @@ m_root
 │
 ├── SoGradientBackground
 │
-├── firstPassSeparator
-│   ├── colorMask
-│   ├── switchToFacet
-│   └── [*]bodies
-│
-└── secondPassSeparator
-    ├── lightModel
-    ├── switchToEdge
-    └── [*]bodies
-
-    [*]: shared node
+└── bodies
 */
 void InventorEx::wireframe()
 {
@@ -1998,14 +1979,7 @@ void InventorEx::wireframe()
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, new SoGradientBackground},
-        {m_root, firstPassSeparator},
-        {m_root, secondPassSeparator},
-        {firstPassSeparator, colorMask},
-        {firstPassSeparator, switchToFacet},
-        {firstPassSeparator, bodies},
-        {secondPassSeparator, lightModel},
-        {secondPassSeparator, switchToEdge},
-        {secondPassSeparator, bodies},
+        {m_root, bodies},
     };
     for (const auto& relationship : relationships)
     {
@@ -2015,21 +1989,6 @@ void InventorEx::wireframe()
     {
         ADD_CHILD(bodies, assembleBodyScene(data));
     }
-
-    colorMask->red = FALSE;
-    colorMask->green = FALSE;
-    colorMask->blue = FALSE;
-    colorMask->alpha = FALSE;
-
-    switchToFacet->switchName = "frameSwitch";
-    switchToFacet->toWhichChild = 0;
-    switchToFacet->searchRange = bodies;
-
-    switchToEdge->switchName = "frameSwitch";
-    switchToEdge->toWhichChild = 1;
-    switchToEdge->searchRange = bodies;
-
-    lightModel->model = SoLightModel::BASE_COLOR;// 渲染将只使用当前材质的漫反射颜色和透明度
 
     std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim" << std::endl;
     int option = -1;
@@ -2055,7 +2014,7 @@ void InventorEx::pointInCube()
 {
     CREATE_NODE(SoSeparator, separator)
     CREATE_NODE(SoCube, cube);
-    CREATE_NODE(/*SoCube*/SoSphere, point);
+    CREATE_NODE(SoCube/*SoSphere*/, point);
     CREATE_NODE(SoMaterial, material);
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoLightModel, lightModel)
@@ -2080,10 +2039,10 @@ void InventorEx::pointInCube()
     cube->width = 10;
     cube->height = 10;
     cube->depth = 10;
-    //point->width = 2;
-    //point->height = 2;
-    //point->depth = 2;
-    point->radius = 1.0f;
+    point->width = 2;
+    point->height = 2;
+    point->depth = 2;
+    //point->radius = 1.0f;
 
     material->diffuseColor.setValue(1.0, 0.0, 0.0);
     material->specularColor.setValue(1.0, 0.0, 0.0);
