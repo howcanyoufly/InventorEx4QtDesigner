@@ -36,6 +36,7 @@
 #include <Inventor/nodes/SoCallback.h>
 #include <Inventor/nodes/SoBaseColor.h>
 #include <Inventor/nodes/SoPointSet.h>
+#include <Inventor/nodes/SoAnnotation.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -1964,6 +1965,8 @@ Why can't we set color masks during the individual body rendering process?
     they don't update the color buffer. As a result, the edges of the first cube aren't obscured by the facets of the second cube.
     Essentially, you cannot hide edges using facets that haven't been rendered yet.
 
+    想法：使用延迟渲染是否只需要渲染一遍
+
 m_root
 │
 ├── SoGradientBackground
@@ -2052,7 +2055,7 @@ void InventorEx::pointInCube()
 {
     CREATE_NODE(SoSeparator, separator)
     CREATE_NODE(SoCube, cube);
-    CREATE_NODE(SoCube, point);
+    CREATE_NODE(/*SoCube*/SoSphere, point);
     CREATE_NODE(SoMaterial, material);
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoLightModel, lightModel)
@@ -2077,9 +2080,10 @@ void InventorEx::pointInCube()
     cube->width = 10;
     cube->height = 10;
     cube->depth = 10;
-    point->width = 2;
-    point->height = 2;
-    point->depth = 2;
+    //point->width = 2;
+    //point->height = 2;
+    //point->depth = 2;
+    point->radius = 1.0f;
 
     material->diffuseColor.setValue(1.0, 0.0, 0.0);
     material->specularColor.setValue(1.0, 0.0, 0.0);
@@ -2164,19 +2168,50 @@ void InventorEx::separateDepthTests()
     CREATE_NODE(SoCube, point);
     CREATE_NODE(SoMaterial, material);
     CREATE_NODE(SoCallback, cleanDepthBuffCB);
-
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    CREATE_NODE(SoPolygonOffset, polygonOffset);
+    CREATE_NODE(SoAnnotation, annotation);
+    
+    int method = 0;
+    float factor = 0.0f;
+    float units = 0.0f;
+    std::cout << "0 for cleanDepthBuffer\t1 for polygonOffset\t2 for Annotation" << std::endl;
+    std::cin >> method;
+    switch (method)
     {
-        {m_root, cube},
-        {m_root, separator},
-        {separator, material},
-        {separator, cleanDepthBuffCB},
-        {separator, point},
-    };
-
-    for (const auto& relationship : relationships)
-    {
-        ADD_CHILD(relationship.first, relationship.second);
+    case 0:
+        m_root->addChild(cube);
+        m_root->addChild(separator);
+        material->diffuseColor.setValue(1.0, 0.0, 0.0);
+        separator->addChild(material);
+        separator->addChild(cleanDepthBuffCB);
+        separator->addChild(point);
+        cleanDepthBuffCB->setCallback(clearDepthBufferCB);
+    	break;
+    case 1:
+        m_root->addChild(cube);
+        m_root->addChild(separator);
+        material->diffuseColor.setValue(1.0, 0.0, 0.0);
+        separator->addChild(material);
+        separator->addChild(polygonOffset);
+        separator->addChild(point);
+        std::cout << "factor: " << std::endl;
+        std::cin >> factor;
+        std::cout << "units(recommend about \n-10000000): " << std::endl;
+        std::cin >> units;
+        polygonOffset->factor = factor;
+        polygonOffset->units = units;
+        polygonOffset->styles = SoPolygonOffset::FILLED;
+    	break;
+    case 2:
+        m_root->addChild(cube);
+        m_root->addChild(annotation);
+        auto complexity = new SoComplexity();
+        complexity->value = 1;
+        material->emissiveColor = SbColor(1, 0, 0);
+        //material->transparency = 0.8;
+        annotation->addChild(complexity);
+        annotation->addChild(material);
+        annotation->addChild(point);
     }
 
     cube->width = 1.0;
@@ -2185,11 +2220,6 @@ void InventorEx::separateDepthTests()
     point->width = 0.2;
     point->height = 0.2;
     point->depth = 0.2;
-
-    material->diffuseColor.setValue(1.0, 0.0, 0.0);
-    material->specularColor.setValue(1.0, 0.0, 0.0);
-
-    cleanDepthBuffCB->setCallback(clearDepthBufferCB);
 }
 
 void InventorEx::simulationPhongCalculate()
@@ -2299,3 +2329,4 @@ void InventorEx::cylinderGL()
     cb->setCallback(drawCylinderOutline);
     m_root->addChild(cb);
 }
+
