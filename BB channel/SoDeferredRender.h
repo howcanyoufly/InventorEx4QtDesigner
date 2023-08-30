@@ -1,6 +1,7 @@
 #pragma once
 #include <Inventor/nodes/SoSubNode.h>
 #include <Inventor/nodes/SoSeparator.h>
+#include <Inventor/fields/SoSFBool.h>
 
 class SoDeferredRender : public SoSeparator {
     typedef SoSeparator inherited;
@@ -10,6 +11,9 @@ class SoDeferredRender : public SoSeparator {
 public:
     static void initClass(void);
     SoDeferredRender(void);
+    SoDeferredRender(SoSFBool bClearDepthBuffer);
+
+    SoSFBool clearDepthBuffer;
 
     virtual void GLRender(SoGLRenderAction* action);
     virtual void GLRenderBelowPath(SoGLRenderAction* action);

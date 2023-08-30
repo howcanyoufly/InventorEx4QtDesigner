@@ -37,6 +37,7 @@
 #include <Inventor/nodes/SoBaseColor.h>
 #include <Inventor/nodes/SoPointSet.h>
 #include <Inventor/nodes/SoAnnotation.h>
+#include <Inventor/nodes/SoShapeHints.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -102,7 +103,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"pointInCube", std::bind(&InventorEx::pointInCube, this)},
         {"colorMaskTest", std::bind(&InventorEx::colorMaskTest, this)},
         {"cylinderIV", std::bind(&InventorEx::cylinder, this)},
-        {"separateDepthTests", std::bind(&InventorEx::separateDepthTests, this)},
+        {"previewPointForward", std::bind(&InventorEx::previewPointForward, this)},
         {"simulationPhongCalculate", std::bind(&InventorEx::simulationPhongCalculate, this)},
         {"cylinderGL", std::bind(&InventorEx::cylinderGL, this)},
         // plugin
@@ -404,12 +405,13 @@ void InventorEx::sphere()
 
 void InventorEx::cube()
 {
-    SoMaterial* material = new SoMaterial;
-    material->diffuseColor.setValue(1, 0, 0);
-    m_root->addChild(material);
+    // coin view会给一个随相机位置的默认直射光照，会与下面给定红色的直射光叠加
+    SoDirectionalLight* dirLight = new SoDirectionalLight;
+    dirLight->direction.setValue(0, -1, -1);
+    dirLight->color.setValue(1, 0, 0);
+    m_root->addChild(dirLight);
 
     m_root->addChild(new SoCube);
-
 }
 
 void InventorEx::engineSpin()
@@ -2013,9 +2015,9 @@ void InventorEx::wireframe()
 void InventorEx::pointInCube()
 {
     CREATE_NODE(SoSeparator, separator)
-    CREATE_NODE(SoCube, cube);
-    CREATE_NODE(SoCube/*SoSphere*/, point);
-    CREATE_NODE(SoMaterial, material);
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoCube/*SoSphere*/, point)
+    CREATE_NODE(SoMaterial, material)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoLightModel, lightModel)
     CREATE_NODE(SoPointLight, light1)
@@ -2061,10 +2063,10 @@ void InventorEx::pointInCube()
 void InventorEx::colorMaskTest()
 {
     CREATE_NODE(SoSeparator, sep)
-    CREATE_NODE(SoCube, cube);
-    CREATE_NODE(SoSphere, sphere);
-    CREATE_NODE(SoCone, cone);
-    CREATE_NODE(SoColorMask, colorMask);
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoSphere, sphere)
+    CREATE_NODE(SoCone, cone)
+    CREATE_NODE(SoColorMask, colorMask)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
@@ -2120,20 +2122,25 @@ void clearDepthBufferCB(void* userdata, SoAction* action)
     }
 }
 
-void InventorEx::separateDepthTests()
+void InventorEx::previewPointForward()
 {
     CREATE_NODE(SoSeparator, separator)
-    CREATE_NODE(SoCube, cube);
-    CREATE_NODE(SoCube, point);
-    CREATE_NODE(SoMaterial, material);
-    CREATE_NODE(SoCallback, cleanDepthBuffCB);
-    CREATE_NODE(SoPolygonOffset, polygonOffset);
-    CREATE_NODE(SoAnnotation, annotation);
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoCube, point)
+    CREATE_NODE(SoMaterial, material)
+    CREATE_NODE(SoCallback, cleanDepthBuffCB)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
+    CREATE_NODE(SoAnnotation, annotation)
+    CREATE_NODE(SoComplexity, complexity)
+    CREATE_NODE(SoDepthBuffer, depthBuffer)
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoDeferredRender, defferedRender)
+
     
     int method = 0;
     float factor = 0.0f;
     float units = 0.0f;
-    std::cout << "0 for cleanDepthBuffer\t1 for polygonOffset\t2 for Annotation" << std::endl;
+    std::cout << "0 for cleanDepthBuffer  1 for polygonOffset  2 for Annotation  3 for Two-sided Lighting  4 for Deffed Render" << std::endl;
     std::cin >> method;
     switch (method)
     {
@@ -2164,13 +2171,31 @@ void InventorEx::separateDepthTests()
     case 2:
         m_root->addChild(cube);
         m_root->addChild(annotation);
-        auto complexity = new SoComplexity();
         complexity->value = 1;
         material->emissiveColor = SbColor(1, 0, 0);
-        //material->transparency = 0.8;
         annotation->addChild(complexity);
         annotation->addChild(material);
         annotation->addChild(point);
+    case 3:
+        m_root->addChild(cube);
+        m_root->addChild(separator);
+        material->diffuseColor.setValue(1.0, 0.0, 0.0);
+        separator->addChild(material);
+        separator->addChild(shapeHints);
+        separator->addChild(depthBuffer);
+        separator->addChild(point);
+        depthBuffer->test = false;
+        shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+        shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+        break;
+    case 4:
+        m_root->addChild(cube);
+        m_root->addChild(defferedRender);
+        material->diffuseColor.setValue(1.0, 0.0, 0.0);
+        defferedRender->addChild(material);
+        defferedRender->addChild(point);
+        defferedRender->clearDepthBuffer = TRUE;
+        break;
     }
 
     cube->width = 1.0;
@@ -2210,17 +2235,18 @@ void InventorEx::simulationPhongCalculate()
     };
     int32_t faceIndicesInward[48] = {
         0, 1, 2, SO_END_FACE_INDEX,
-        0, 2, 3, SO_END_FACE_INDEX,
-        0, 5, 1, SO_END_FACE_INDEX,
-        0, 4, 5, SO_END_FACE_INDEX,
-        1, 6, 2, SO_END_FACE_INDEX,
-        1, 5, 6, SO_END_FACE_INDEX,
-        2, 6, 3, SO_END_FACE_INDEX,
-        3, 6, 7, SO_END_FACE_INDEX,
-        3, 7, 4, SO_END_FACE_INDEX,
-        0, 3, 4, SO_END_FACE_INDEX,
-        4, 7, 5, SO_END_FACE_INDEX,
-        5, 7, 6, SO_END_FACE_INDEX,
+        //0, 2, 3, SO_END_FACE_INDEX,
+        //0, 5, 1, SO_END_FACE_INDEX,
+        //0, 4, 5, SO_END_FACE_INDEX,
+        //1, 6, 2, SO_END_FACE_INDEX,
+        //1, 5, 6, SO_END_FACE_INDEX,
+        //2, 6, 3, SO_END_FACE_INDEX,
+        //3, 6, 7, SO_END_FACE_INDEX,
+        //3, 7, 4, SO_END_FACE_INDEX,
+        //0, 3, 4, SO_END_FACE_INDEX,
+        //4, 7, 5, SO_END_FACE_INDEX,
+        //5, 7, 6, SO_END_FACE_INDEX,
+        4, 6, 5, SO_END_FACE_INDEX
     };
 
     SoSeparator* sep = new SoSeparator;
@@ -2229,23 +2255,38 @@ void InventorEx::simulationPhongCalculate()
     SoIndexedFaceSet* faceSetInward = new SoIndexedFaceSet;
     SoMaterial* material = new SoMaterial;
     SoDepthBuffer* depthBuffer = new SoDepthBuffer;
+    SoShapeHints* pShapeHints = new SoShapeHints;
+
+    m_root->addChild(sep);
+    sep->addChild(material);
+    sep->addChild(pShapeHints);
+    sep->addChild(coords);
+    //sep->addChild(depthBuffer);
+    //sep->addChild(faceSet);
+    sep->addChild(faceSetInward);
 
     material->diffuseColor.setValue(1, 0, 0);
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 8, faceIndices);
-    faceSetInward->coordIndex.setValues(0, 48, faceIndices);
+    faceSetInward->coordIndex.setValues(0, 8, faceIndicesInward);
     depthBuffer->test = false;
 
-
-    m_root->addChild(sep);
-    sep->addChild(material);
-    sep->addChild(coords);
-    sep->addChild(depthBuffer);
-    sep->addChild(faceSet);
-    //sep->addChild(faceSetInward);
-
+    std::cout << "背面剔除 ON?: " << std::endl;
+    bool option = false;
+    std::cin >> option;
+    if (option) 
+    {
+        pShapeHints->shapeType = SoShapeHints::SOLID;
+        pShapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    }
+    std::cout << "双面光 ON?(双面光ON与背面剔除ON矛盾): " << std::endl;
+    std::cin >> option;
+    if (option)
+    {
+        pShapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+        pShapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    }
 }
-
 
 void drawCylinderOutline(void*, SoAction* action)
 {

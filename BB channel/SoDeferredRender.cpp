@@ -4,6 +4,17 @@
 #include <Inventor/elements/SoCacheElement.h>
 #include <Inventor/actions/SoGLRenderAction.h>
 
+#ifdef WIN32
+#include <windows.h>
+#endif // WIN32
+
+#ifdef __APPLE__
+#include <OpenGL/gl.h>
+#else // __APPLE__
+#include <GL/gl.h>
+#endif // __APPLE__
+
+
 
 SO_NODE_SOURCE(SoDeferredRender);
 
@@ -14,6 +25,15 @@ SO_NODE_SOURCE(SoDeferredRender);
 SoDeferredRender::SoDeferredRender()
 {
     SO_NODE_CONSTRUCTOR(SoDeferredRender);
+}
+
+SoDeferredRender::SoDeferredRender(SoSFBool bClearDepthBuffer)
+    : clearDepthBuffer(bClearDepthBuffer)
+{
+    SO_NODE_CONSTRUCTOR(SoDeferredRender);
+
+    SO_NODE_ADD_FIELD(clearDepthBuffer, (FALSE));
+
 }
 
 /*!
@@ -57,6 +77,8 @@ SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 {
     if (action->isRenderingDelayedPaths()) 
     {
+        if (clearDepthBuffer.getValue())
+            glClear(GL_DEPTH_BUFFER_BIT);
         inherited::GLRenderBelowPath(action);
     } 
     else 
@@ -72,6 +94,8 @@ SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
 {
     if (action->isRenderingDelayedPaths()) 
     {
+        if (clearDepthBuffer.getValue())
+            glClear(GL_DEPTH_BUFFER_BIT);
         inherited::GLRenderInPath(action);
     }
     else 

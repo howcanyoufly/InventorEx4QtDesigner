@@ -86,7 +86,7 @@ private:
 
     void cylinder();
 
-    void separateDepthTests();
+    void previewPointForward();
 
     void simulationPhongCalculate();
 
