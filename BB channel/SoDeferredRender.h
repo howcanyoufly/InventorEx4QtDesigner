@@ -11,7 +11,7 @@ class SoDeferredRender : public SoSeparator {
 public:
     static void initClass(void);
     SoDeferredRender(void);
-    SoDeferredRender(SoSFBool bClearDepthBuffer);
+    SoDeferredRender(SbBool bClearDepthBuffer);
 
     SoSFBool clearDepthBuffer;
 

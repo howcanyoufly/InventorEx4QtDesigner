@@ -14,10 +14,7 @@
 #include <GL/gl.h>
 #endif // __APPLE__
 
-
-
 SO_NODE_SOURCE(SoDeferredRender);
-
 
 /*!
   Constructor.
@@ -25,15 +22,13 @@ SO_NODE_SOURCE(SoDeferredRender);
 SoDeferredRender::SoDeferredRender()
 {
     SO_NODE_CONSTRUCTOR(SoDeferredRender);
+    SO_NODE_ADD_FIELD(clearDepthBuffer, (FALSE));
 }
 
-SoDeferredRender::SoDeferredRender(SoSFBool bClearDepthBuffer)
-    : clearDepthBuffer(bClearDepthBuffer)
+SoDeferredRender::SoDeferredRender(SbBool bClearDepthBuffer)
 {
     SO_NODE_CONSTRUCTOR(SoDeferredRender);
-
-    SO_NODE_ADD_FIELD(clearDepthBuffer, (FALSE));
-
+    this->clearDepthBuffer.setValue(bClearDepthBuffer);
 }
 
 /*!
@@ -75,13 +70,13 @@ SoDeferredRender::GLRender(SoGLRenderAction* action)
 void
 SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 {
-    if (action->isRenderingDelayedPaths()) 
+    if (action->isRenderingDelayedPaths())
     {
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
         inherited::GLRenderBelowPath(action);
-    } 
-    else 
+    }
+    else
     {
         SoCacheElement::invalidate(action->getState());
         action->addDelayedPath(action->getCurPath()->copy());
@@ -92,7 +87,7 @@ SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 void
 SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
 {
-    if (action->isRenderingDelayedPaths()) 
+    if (action->isRenderingDelayedPaths())
     {
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
