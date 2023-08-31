@@ -106,6 +106,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"previewPointForward", std::bind(&InventorEx::previewPointForward, this)},
         {"simulationPhongCalculate", std::bind(&InventorEx::simulationPhongCalculate, this)},
         {"cylinderGL", std::bind(&InventorEx::cylinderGL, this)},
+        {"flat", std::bind(&InventorEx::flat, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -2328,5 +2329,85 @@ void InventorEx::cylinderGL()
     SoCallback* cb = new SoCallback;
     cb->setCallback(drawCylinderOutline);
     m_root->addChild(cb);
+}
+
+
+// question1: 双面光照时背面没有透明效果
+// question2: 选择与拾取模式下，是否可以选到期望层
+void InventorEx::flat()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoDeferredRender, firstFloor)
+    CREATE_NODE(SoDeferredRender, secondFloor)
+    CREATE_NODE(SoDeferredRender, thirdFloor)
+    CREATE_NODE(SoMaterial, firstFloorMaterial)
+    CREATE_NODE(SoMaterial, secondFloorMaterial)
+    CREATE_NODE(SoMaterial, thirdFloorMaterial)
+    CREATE_NODE(SoTranslation, firstFloorTranslation)
+    CREATE_NODE(SoTranslation, secondFloorTranslation)
+    CREATE_NODE(SoTranslation, thirdFloorTranslation)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoIndexedFaceSet, face)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, coords},
+        {m_root, shapeHints},
+        //{m_root, face},
+        {m_root, firstFloor},
+        {m_root, secondFloor},
+        {m_root, thirdFloor},
+        {firstFloor, firstFloorMaterial},
+        {firstFloor, firstFloorTranslation},
+        {firstFloor, face},
+        {secondFloor, secondFloorMaterial},
+        {secondFloor, secondFloorTranslation},
+        {secondFloor, face},
+        {thirdFloor, thirdFloorMaterial},
+        {thirdFloor, thirdFloorTranslation},
+        {thirdFloor, face},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    std::cout << "Clear DepthBuffer?: ";
+    bool option = false;
+    std::cin >> option;
+    firstFloor->clearDepthBuffer = option;
+    secondFloor->clearDepthBuffer = option;
+    thirdFloor->clearDepthBuffer = option;
+
+    firstFloorMaterial->diffuseColor.setValue(1, 0, 0);
+    firstFloorMaterial->transparency.setValue(0.8);
+    secondFloorMaterial->diffuseColor.setValue(0, 1, 0);
+    secondFloorMaterial->transparency.setValue(0.8);
+    thirdFloorMaterial->diffuseColor.setValue(0, 0, 1);
+    thirdFloorMaterial->transparency.setValue(0.8);
+
+    firstFloorTranslation->translation.setValue(0, 0, 0.2);
+    secondFloorTranslation->translation.setValue(0, 0, 0.4);
+    thirdFloorTranslation->translation.setValue(0, 0, 0.6);
+
+    coords->point.setValues(0, 8, pts);
+    face->coordIndex.setValues(0, 4, faceIndices);
 }
 

@@ -92,6 +92,8 @@ private:
 
     void cylinderGL();
 
+    void flat();
+
     // plugins
     void loadPickAndWrite();
     void loadErrorHandle();
