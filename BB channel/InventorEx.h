@@ -92,6 +92,8 @@ private:
 
     void cylinderGL();
 
+    void deferredRender();
+
     void flat();
 
     // plugins

@@ -106,6 +106,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"previewPointForward", std::bind(&InventorEx::previewPointForward, this)},
         {"simulationPhongCalculate", std::bind(&InventorEx::simulationPhongCalculate, this)},
         {"cylinderGL", std::bind(&InventorEx::cylinderGL, this)},
+        {"deferredRender", std::bind(&InventorEx::deferredRender, this)},
         {"flat", std::bind(&InventorEx::flat, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
@@ -2221,18 +2222,17 @@ void InventorEx::simulationPhongCalculate()
     };
     int32_t faceIndices[48] = {
         0, 2, 1, SO_END_FACE_INDEX,
-        //0, 3, 2, SO_END_FACE_INDEX,
-        //0, 1, 5, SO_END_FACE_INDEX,
-        //0, 5, 4, SO_END_FACE_INDEX,
-        //1, 2, 6, SO_END_FACE_INDEX,
-        //1, 6, 5, SO_END_FACE_INDEX,
-        //2, 3, 6, SO_END_FACE_INDEX,
-        //3, 7, 6, SO_END_FACE_INDEX,
-        //3, 4, 7, SO_END_FACE_INDEX,
-        //0, 4, 3, SO_END_FACE_INDEX,
-        //4, 5, 7, SO_END_FACE_INDEX,
-        //5, 6, 7, SO_END_FACE_INDEX,
-        4, 5, 6, SO_END_FACE_INDEX
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
     };
     int32_t faceIndicesInward[48] = {
         0, 1, 2, SO_END_FACE_INDEX,
@@ -2250,43 +2250,48 @@ void InventorEx::simulationPhongCalculate()
         4, 6, 5, SO_END_FACE_INDEX
     };
 
-    SoSeparator* sep = new SoSeparator;
     SoCoordinate3* coords = new SoCoordinate3;
     SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
     SoIndexedFaceSet* faceSetInward = new SoIndexedFaceSet;
     SoMaterial* material = new SoMaterial;
     SoDepthBuffer* depthBuffer = new SoDepthBuffer;
-    SoShapeHints* pShapeHints = new SoShapeHints;
+    SoShapeHints* shapeHints = new SoShapeHints;
+    SoTranslation* translation = new SoTranslation;
 
-    m_root->addChild(sep);
-    sep->addChild(material);
-    sep->addChild(pShapeHints);
-    sep->addChild(coords);
-    //sep->addChild(depthBuffer);
-    //sep->addChild(faceSet);
-    sep->addChild(faceSetInward);
+    m_root->addChild(material);
+    m_root->addChild(shapeHints);
+    m_root->addChild(coords);
+    m_root->addChild(depthBuffer);
+    m_root->addChild(faceSet);
+    //m_root->addChild(faceSetInward);
+    //m_root->addChild(translation);
+    //m_root->addChild(faceSet);
 
     material->diffuseColor.setValue(1, 0, 0);
+    material->transparency = 0.8;
     coords->point.setValues(0, 8, pts);
-    faceSet->coordIndex.setValues(0, 8, faceIndices);
+    faceSet->coordIndex.setValues(0, 48, faceIndices);
     faceSetInward->coordIndex.setValues(0, 8, faceIndicesInward);
-    depthBuffer->test = false;
+    translation->translation.setValue(0, 0, 0.5);
 
     std::cout << "背面剔除 ON?: " << std::endl;
     bool option = false;
     std::cin >> option;
     if (option) 
     {
-        pShapeHints->shapeType = SoShapeHints::SOLID;
-        pShapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+        shapeHints->shapeType = SoShapeHints::SOLID;
+        shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
     }
     std::cout << "双面光 ON?(双面光ON与背面剔除ON矛盾): " << std::endl;
     std::cin >> option;
     if (option)
     {
-        pShapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
-        pShapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+        shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+        shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
     }
+    std::cout << "depth test: " << std::endl;
+    std::cin >> option;
+    depthBuffer->test = option;
 }
 
 void drawCylinderOutline(void*, SoAction* action)
@@ -2329,6 +2334,69 @@ void InventorEx::cylinderGL()
     SoCallback* cb = new SoCallback;
     cb->setCallback(drawCylinderOutline);
     m_root->addChild(cb);
+}
+
+void InventorEx::deferredRender()
+{
+    float pts[4][3] = {
+    { -5.0, -5.0, 1.0 },
+    { 5.0, -5.0, 1.0 },
+    { 5.0, 5.0, 1.0 },
+    { -5.0, 5.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+    0, 1, 2, SO_END_FACE_INDEX,
+    0, 2, 3, SO_END_FACE_INDEX,
+    };
+
+
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoDeferredRender, firstFloor)
+    CREATE_NODE(SoDeferredRender, secondFloor)
+    CREATE_NODE(SoMaterial, redMaterial)
+    CREATE_NODE(SoMaterial, blueMaterial)
+    CREATE_NODE(SoTranslation, translation)
+    CREATE_NODE(SoMaterial, secondFloorMaterial)
+    CREATE_NODE(SoCube, littleCube)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoIndexedFaceSet, lens)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, cube},
+        {m_root, firstFloor},
+        {m_root, secondFloor},
+        {firstFloor, redMaterial},
+        {firstFloor, littleCube},
+        {firstFloor, translation},
+        {firstFloor, blueMaterial},
+        {firstFloor, littleCube},
+        {secondFloor, coords},
+        {secondFloor, secondFloorMaterial},
+        {secondFloor, shapeHints},
+        {secondFloor, lens},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    firstFloor->clearDepthBuffer = TRUE;
+    secondFloor->clearDepthBuffer = TRUE;
+    redMaterial->diffuseColor.setValue(1, 0, 0);
+    blueMaterial->diffuseColor.setValue(0, 0, 1);
+    translation->translation.setValue(0.1, 0.1, 0.1);
+    secondFloorMaterial->diffuseColor.setValue(0, 1, 0);
+    secondFloorMaterial->transparency = 0.8;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    littleCube->width = 0.2;
+    littleCube->height = 0.2;
+    littleCube->depth = 0.2;
+
+    coords->point.setValues(0, 4, pts);
+    lens->coordIndex.setValues(0, 8, faceIndices);
 }
 
 
