@@ -88,7 +88,7 @@ private:
 
     void previewPointForward();
 
-    void simulationPhongCalculate();
+    void twoSideFace();
 
     void cylinderGL();
 

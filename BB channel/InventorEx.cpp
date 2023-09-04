@@ -104,7 +104,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"colorMaskTest", std::bind(&InventorEx::colorMaskTest, this)},
         {"cylinderIV", std::bind(&InventorEx::cylinder, this)},
         {"previewPointForward", std::bind(&InventorEx::previewPointForward, this)},
-        {"simulationPhongCalculate", std::bind(&InventorEx::simulationPhongCalculate, this)},
+        {"twoSideFace", std::bind(&InventorEx::twoSideFace, this)},
         {"cylinderGL", std::bind(&InventorEx::cylinderGL, this)},
         {"deferredRender", std::bind(&InventorEx::deferredRender, this)},
         {"flat", std::bind(&InventorEx::flat, this)},
@@ -219,6 +219,7 @@ void InventorEx::run(const std::string& funcName)
             return;
         }
     }
+    std::cout << matches[0] << std::endl;
 
     if (m_reset)
     {
@@ -2208,7 +2209,7 @@ void InventorEx::previewPointForward()
     point->depth = 0.2;
 }
 
-void InventorEx::simulationPhongCalculate()
+void InventorEx::twoSideFace()
 {
     float pts[8][3] = {
         { 0.0, 0.0, 0.0 },
@@ -2222,17 +2223,17 @@ void InventorEx::simulationPhongCalculate()
     };
     int32_t faceIndices[48] = {
         0, 2, 1, SO_END_FACE_INDEX,
-        0, 3, 2, SO_END_FACE_INDEX,
-        0, 1, 5, SO_END_FACE_INDEX,
-        0, 5, 4, SO_END_FACE_INDEX,
-        1, 2, 6, SO_END_FACE_INDEX,
-        1, 6, 5, SO_END_FACE_INDEX,
-        2, 3, 6, SO_END_FACE_INDEX,
-        3, 7, 6, SO_END_FACE_INDEX,
-        3, 4, 7, SO_END_FACE_INDEX,
-        0, 4, 3, SO_END_FACE_INDEX,
-        4, 5, 7, SO_END_FACE_INDEX,
-        5, 6, 7, SO_END_FACE_INDEX,
+        //0, 3, 2, SO_END_FACE_INDEX,
+        //0, 1, 5, SO_END_FACE_INDEX,
+        //0, 5, 4, SO_END_FACE_INDEX,
+        //1, 2, 6, SO_END_FACE_INDEX,
+        //1, 6, 5, SO_END_FACE_INDEX,
+        //2, 3, 6, SO_END_FACE_INDEX,
+        //3, 7, 6, SO_END_FACE_INDEX,
+        //3, 4, 7, SO_END_FACE_INDEX,
+        //0, 4, 3, SO_END_FACE_INDEX,
+        //4, 6, 7, SO_END_FACE_INDEX,
+        4, 5, 6, SO_END_FACE_INDEX,
     };
     int32_t faceIndicesInward[48] = {
         0, 1, 2, SO_END_FACE_INDEX,
@@ -2264,8 +2265,8 @@ void InventorEx::simulationPhongCalculate()
     m_root->addChild(depthBuffer);
     m_root->addChild(faceSet);
     //m_root->addChild(faceSetInward);
-    //m_root->addChild(translation);
-    //m_root->addChild(faceSet);
+    m_root->addChild(translation);
+    m_root->addChild(faceSet);
 
     material->diffuseColor.setValue(1, 0, 0);
     material->transparency = 0.8;
@@ -2400,8 +2401,22 @@ void InventorEx::deferredRender()
 }
 
 
-// question1: 双面光照时背面没有透明效果
+// question1: 双面光照时背面没有透明效果(即使是SORTED_OBJECT_BLEND)（延迟渲染无法排序？）
 // question2: 选择与拾取模式下，是否可以选到期望层
+
+// question1: 透明物体存在错误的遮挡效果
+// 延迟渲染的方式代码体量小，代价也低，缺点就是无法正确的处理透明排序，简单的来说，透明排序也是一种延迟渲染，与deferredRender相矛盾
+// 透明物体的渲染效果由渲染顺序和深度测试共同决定，coin中的SORTED_OBJECT_BLEND是通过****关闭深度写入****后对透明物体指定渲染顺序来实现的
+// GLRenderAction先遍历节点，在遍历过程中向transList、sortedTransList和delayList添加节点
+// 透明排序添加必须依赖于形体节点的访问，而deferredRender中在组节点处就跳出了，这是第一点矛盾
+// 第二点矛盾是，traversal、sorttranspobjpaths和delayedpaths在流程中有固有的先后顺序，延迟渲染的透明物体也不进行handleTransparency，coin在设计中就是把两者分离的
+
+// answer: 假定我们把一些透明物体和不透明物体放在新的一层，这一层的深度缓冲区是全新的，我们希望尽可能地将这一层正确地渲染（考虑SORTED_OBJECT_BLEND）
+//         1. 毫无疑问的，我们需要先渲染不透明物体，这一步要开启深度测试与深度写入，不要求渲染顺序
+//         2. 在上一步构建的深度缓冲中，渲染透明物体，指定从后向前的渲染顺序是关键，深度测试开启而深度写入关闭
+//         新的课题是：如何控制一个组节点下的形体的渲染顺序
+//         用新的action
+
 void InventorEx::flat()
 {
     float pts[8][3] = {
@@ -2421,13 +2436,11 @@ void InventorEx::flat()
     CREATE_NODE(SoShapeHints, shapeHints)
     CREATE_NODE(SoDeferredRender, firstFloor)
     CREATE_NODE(SoDeferredRender, secondFloor)
-    CREATE_NODE(SoDeferredRender, thirdFloor)
     CREATE_NODE(SoMaterial, firstFloorMaterial)
+    CREATE_NODE(SoMaterial, firstFloorMaterialPlus)
     CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoMaterial, thirdFloorMaterial)
     CREATE_NODE(SoTranslation, firstFloorTranslation)
     CREATE_NODE(SoTranslation, secondFloorTranslation)
-    CREATE_NODE(SoTranslation, thirdFloorTranslation)
     CREATE_NODE(SoCoordinate3, coords)
     CREATE_NODE(SoIndexedFaceSet, face)
 
@@ -2435,19 +2448,18 @@ void InventorEx::flat()
     {
         {m_root, coords},
         {m_root, shapeHints},
-        //{m_root, face},
+        {m_root, face},
         {m_root, firstFloor},
         {m_root, secondFloor},
-        {m_root, thirdFloor},
         {firstFloor, firstFloorMaterial},
+        {firstFloor, firstFloorTranslation},
+        {firstFloor, face},
+        {firstFloor, firstFloorMaterialPlus},
         {firstFloor, firstFloorTranslation},
         {firstFloor, face},
         {secondFloor, secondFloorMaterial},
         {secondFloor, secondFloorTranslation},
         {secondFloor, face},
-        {thirdFloor, thirdFloorMaterial},
-        {thirdFloor, thirdFloorTranslation},
-        {thirdFloor, face},
     };
     for (const auto& relationship : relationships)
     {
@@ -2462,18 +2474,16 @@ void InventorEx::flat()
     std::cin >> option;
     firstFloor->clearDepthBuffer = option;
     secondFloor->clearDepthBuffer = option;
-    thirdFloor->clearDepthBuffer = option;
 
     firstFloorMaterial->diffuseColor.setValue(1, 0, 0);
     firstFloorMaterial->transparency.setValue(0.8);
-    secondFloorMaterial->diffuseColor.setValue(0, 1, 0);
+    firstFloorMaterialPlus->diffuseColor.setValue(0, 1, 0);
+    firstFloorMaterialPlus->transparency.setValue(0.8);
+    secondFloorMaterial->diffuseColor.setValue(0, 0, 1);
     secondFloorMaterial->transparency.setValue(0.8);
-    thirdFloorMaterial->diffuseColor.setValue(0, 0, 1);
-    thirdFloorMaterial->transparency.setValue(0.8);
 
     firstFloorTranslation->translation.setValue(0, 0, 0.2);
-    secondFloorTranslation->translation.setValue(0, 0, 0.4);
-    thirdFloorTranslation->translation.setValue(0, 0, 0.6);
+    secondFloorTranslation->translation.setValue(0, 0, 0.6);
 
     coords->point.setValues(0, 8, pts);
     face->coordIndex.setValues(0, 4, faceIndices);
