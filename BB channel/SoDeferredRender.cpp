@@ -20,12 +20,14 @@ SO_NODE_SOURCE(SoDeferredRender);
   Constructor.
 */
 SoDeferredRender::SoDeferredRender()
+    : isUsingNewAction(FALSE)
 {
     SO_NODE_CONSTRUCTOR(SoDeferredRender);
     SO_NODE_ADD_FIELD(clearDepthBuffer, (FALSE));
 }
 
 SoDeferredRender::SoDeferredRender(SbBool bClearDepthBuffer)
+    : isUsingNewAction(FALSE)
 {
     SO_NODE_CONSTRUCTOR(SoDeferredRender);
     this->clearDepthBuffer.setValue(bClearDepthBuffer);
@@ -70,11 +72,23 @@ SoDeferredRender::GLRender(SoGLRenderAction* action)
 void
 SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 {
-    if (action->isRenderingDelayedPaths())
+    if (isUsingNewAction)
     {
+        // 正常渲染
+        inherited::GLRenderBelowPath(action);
+    }
+    else if (action->isRenderingDelayedPaths())
+    {
+        // 从delayedpaths进入
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
-        inherited::GLRenderBelowPath(action);
+        // 创建并配置新的SoGLRenderAction
+        SoGLRenderAction newAction(action->getViewportRegion());
+        SoPath* newPath = action->getCurPath()->copy();
+        isUsingNewAction = TRUE;
+        newAction.apply(newPath);
+        isUsingNewAction = FALSE;
+        newPath->unref();
     }
     else
     {
@@ -84,16 +98,27 @@ SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 }
 
 // Doc in superclass.
-void
-SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
+void SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
 {
-    if (action->isRenderingDelayedPaths())
+    if (isUsingNewAction)
     {
-        if (clearDepthBuffer.getValue())
-            glClear(GL_DEPTH_BUFFER_BIT);
+        // 正常渲染
         inherited::GLRenderInPath(action);
     }
-    else 
+    else if (action->isRenderingDelayedPaths())
+    {
+        // 从delayedpaths进入
+        if (clearDepthBuffer.getValue())
+            glClear(GL_DEPTH_BUFFER_BIT);
+        // 创建并配置新的SoGLRenderAction
+        SoGLRenderAction newAction(action->getViewportRegion());
+        SoPath* newPath = action->getCurPath()->copy();
+        isUsingNewAction = TRUE;
+        newAction.apply(newPath);
+        isUsingNewAction = FALSE;
+        newPath->unref();
+    }
+    else
     {
         SoCacheElement::invalidate(action->getState());
         action->addDelayedPath(action->getCurPath()->copy());
