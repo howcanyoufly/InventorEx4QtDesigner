@@ -22,7 +22,4 @@ public:
 
 protected:
     virtual ~SoDeferredRender();
-
-private:
-    SbBool isUsingNewAction;
 };
