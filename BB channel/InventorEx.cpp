@@ -112,7 +112,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"deferredRender", std::bind(&InventorEx::deferredRender, this)},
         {"flat", std::bind(&InventorEx::flat, this)},
         {"switchToPathTraversal", std::bind(&InventorEx::switchToPathTraversal, this)},
-        {"AuxViewport", std::bind(&InventorEx::AuxViewport, this)},
+        {"auxViewport", std::bind(&InventorEx::auxViewport, this)},
+        {"actStateOfDelayList", std::bind(&InventorEx::actStateOfDelayList, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -2365,7 +2366,6 @@ void InventorEx::flat()
 void actionSwitchTo(void* userdata, SoAction* action)
 {
     SoPath* path = (SoPath*)userdata;
-
     //action->switchToPathTraversal(path);
     action->apply(path);
 }
@@ -2466,7 +2466,7 @@ static void renderAuxViewport(void* userdata, SoAction* action)
     lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
 }
 
-void InventorEx::AuxViewport()// Not implemented yet
+void InventorEx::auxViewport()// Not implemented yet
 {
     SoSphere* sphere = new SoSphere; // 一个简单的球体
     m_root->addChild(sphere);
@@ -2579,3 +2579,74 @@ void cubeDrag()
     return;
 }
 */
+
+// 证明了path.GLRender(glrenderaction)应用的是Path所处位置的状态
+void InventorEx::actStateOfDelayList()
+{
+    float pts[8][3] = {
+    { 0.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 1.0, 0.0 },
+    { 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 1.0, 0.0, 1.0 },
+    { 1.0, 1.0, 1.0 },
+    { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoDeferredRender, firstFloor)
+    CREATE_NODE(SoDeferredRender, secondFloor)
+    CREATE_NODE(SoMaterial, firstFloorMaterial)
+    CREATE_NODE(SoMaterial, firstFloorMaterialPlus)
+    CREATE_NODE(SoMaterial, secondFloorMaterial)
+    CREATE_NODE(SoTranslation, firstFloorTranslation)
+    CREATE_NODE(SoTranslation, secondFloorTranslation)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoIndexedFaceSet, face)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, coords},
+        {m_root, shapeHints},
+        {m_root, face},
+        {m_root, firstFloorMaterial},
+        {m_root, firstFloorTranslation},
+        {m_root, firstFloor},
+        {m_root, secondFloor},
+        {firstFloor, face},
+        {firstFloor, firstFloorMaterialPlus},
+        {firstFloor, firstFloorTranslation},
+        {firstFloor, face},
+        {secondFloor, secondFloorMaterial},
+        {secondFloor, secondFloorTranslation},
+        {secondFloor, face},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    firstFloor->clearDepthBuffer = TRUE;
+    secondFloor->clearDepthBuffer = TRUE;
+
+    firstFloorMaterial->diffuseColor.setValue(1, 0, 0);
+    firstFloorMaterial->transparency.setValue(0.8);
+    firstFloorMaterialPlus->diffuseColor.setValue(0, 1, 0);
+    firstFloorMaterialPlus->transparency.setValue(0.8);
+    secondFloorMaterial->diffuseColor.setValue(0, 0, 1);
+    secondFloorMaterial->transparency.setValue(0.8);
+
+    firstFloorTranslation->translation.setValue(0, 0, 0.2);
+    secondFloorTranslation->translation.setValue(0, 0, 0.4);
+
+    coords->point.setValues(0, 8, pts);
+    face->coordIndex.setValues(0, 4, faceIndices);
+}
+

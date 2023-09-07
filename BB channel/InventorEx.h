@@ -82,8 +82,9 @@ private:
     void pointInCube();
     void previewPointForward();
     void twoSideFace();
-    void AuxViewport();
+    void auxViewport();
 
+    void actStateOfDelayList();
     void deferredRender();
     void flat();
     void switchToPathTraversal();
