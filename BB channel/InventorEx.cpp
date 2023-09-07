@@ -38,12 +38,16 @@
 #include <Inventor/nodes/SoPointSet.h>
 #include <Inventor/nodes/SoAnnotation.h>
 #include <Inventor/nodes/SoShapeHints.h>
+#include <Inventor/nodes/SoClipPlane.h>
+#include <Inventor/nodes/SoRotation.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
 #include <Inventor/actions/SoWriteAction.h>
 #include <Inventor/elements/SoGLLazyElement.h>
 #include <Inventor/elements/SoCacheElement.h>
+#include <Inventor/elements/SoViewingMatrixElement.h>
+#include <Inventor/elements/SoProjectionMatrixElement.h>
 
 #include <GL/gl.h>
 
@@ -64,8 +68,8 @@
 #define ADD_CHILD(parent, child) \
     parent->addChild(child);
 
-#define WindowWidth 1200
-#define WindowHeight 900
+#define WINDOWWIDTH 1200
+#define WINDOWHEIGHT 900
 
 static int s_renderCountForDebug = 0;
 
@@ -93,7 +97,6 @@ InventorEx::InventorEx(int argc, char** argv)
         {"indexedFaceSet", std::bind(&InventorEx::indexedFaceSet, this)},
         {"twoCube", std::bind(&InventorEx::twoCube, this)},
         {"pickAction", std::bind(&InventorEx::pickAction, this)},
-        {"superScene", std::bind(&InventorEx::superScene, this)},
         {"glCallback", std::bind(&InventorEx::glCallback, this)},
         {"oit", std::bind(&InventorEx::oit, this)},
         {"simpleDepthTest", std::bind(&InventorEx::simpleDepthTest, this)},
@@ -108,6 +111,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"cylinderGL", std::bind(&InventorEx::cylinderGL, this)},
         {"deferredRender", std::bind(&InventorEx::deferredRender, this)},
         {"flat", std::bind(&InventorEx::flat, this)},
+        {"switchToPathTraversal", std::bind(&InventorEx::switchToPathTraversal, this)},
+        {"AuxViewport", std::bind(&InventorEx::AuxViewport, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -132,7 +137,7 @@ InventorEx::InventorEx(int argc, char** argv)
     SoDeferredRender::initClass();
 
     m_mainwin = new QMainWindow();
-    m_mainwin->resize(WindowWidth, WindowHeight);
+    m_mainwin->resize(WINDOWWIDTH, WINDOWHEIGHT);
 
     // Create a QuarterWidget for displaying a Coin scene graph
     m_viewer = new QuarterWidget(m_mainwin);
@@ -170,7 +175,7 @@ void InventorEx::resetScene()
     m_mainwin = nullptr;
 
     m_mainwin = new QMainWindow();
-    m_mainwin->resize(WindowWidth, WindowHeight);
+    m_mainwin->resize(WINDOWWIDTH, WINDOWHEIGHT);
     m_viewer = new QuarterWidget(m_mainwin);
 
     m_viewer->setNavigationModeFile();
@@ -260,150 +265,15 @@ const std::map<std::string, std::function<void(void)>>& InventorEx::getFunctions
     return m_functions;
 }
 
-// 参考结构
-/*
-==================================
-ViewProviderSoShow
-==================================
-m_root
-└── bodySwitch (SoSwitch)
-    └── body (SoSeparator)
-==================================
-ViewProviderBody
-==================================
-        ├── scale (SoScale)
-        ├── trasparencyTypeSwitch (SoSwitch)
-        |   └── trasparencyType (SoTransparencyType)
-        └── dataNode (SoSeparator)
-            ├── coords (SoCoordinate3)
-            └── renderModeSwitch (SoSwitch)
-                ├── shadeWithEdge (SoSeparator)
-                |   ├── material (SoMaterial)
-                |   ├── offset (SoPolygonOffset)
-                |   ├── faceRoot (SoSeparator)
-                |   |   ├── faceStyle (SoDrawStyle)
-                |   |   ├── faceNormal (SoNormal)
-                |   |   ├── normalBinding (SoNormalBinding)
-                |   |   ├── materialSwitch (SoSwitch)
-                |   |   |   └── transparentMaterial (SoMaterial)
-                |   |   └── faceSet (SoIndexedFaceSet)
-                |   └── lineVisbleRoot (SoSeparator)
-                |       └── lineVisibleSet (SoIndexedLineSet)
-                ├── shadeWithoutEdge (SoSeparator)
-                ├── transluency (SoSeparator)
-                ├── staticWireframe (SoSeparator)
-                └── wireframeWithoutHidden (SoSeparator)
-*/
-void InventorEx::superScene()
-{
-    float pts[8][3] = {
-    { 0.0, 0.0, 0.0 },
-    { 1.0, 0.0, 0.0 },
-    { 1.0, 1.0, 0.0 },
-    { 0.0, 1.0, 0.0 },
-    { 0.0, 0.0, 1.0 },
-    { 1.0, 0.0, 1.0 },
-    { 1.0, 1.0, 1.0 },
-    { 0.0, 1.0, 1.0 },
-    };
-    int32_t faceIndices[48] = {
-        0, 2, 1, SO_END_FACE_INDEX,
-        0, 3, 2, SO_END_FACE_INDEX,
-        0, 1, 5, SO_END_FACE_INDEX,
-        0, 5, 4, SO_END_FACE_INDEX,
-        1, 2, 6, SO_END_FACE_INDEX,
-        1, 6, 5, SO_END_FACE_INDEX,
-        2, 3, 6, SO_END_FACE_INDEX,
-        3, 7, 6, SO_END_FACE_INDEX,
-        3, 4, 7, SO_END_FACE_INDEX,
-        0, 4, 3, SO_END_FACE_INDEX,
-        4, 5, 7, SO_END_FACE_INDEX,
-        5, 6, 7, SO_END_FACE_INDEX,
-    };
-    int32_t lineIndices[24] = {
-        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
-        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
-        0, 4, SO_END_LINE_INDEX,
-        1, 5, SO_END_LINE_INDEX,
-        2, 6, SO_END_LINE_INDEX,
-        3, 7, SO_END_LINE_INDEX
-    };
-
-    SoSwitch* bodySwitch = new SoSwitch;
-    SoSeparator* body = new SoSeparator;
-    SoScale* scale = new SoScale;
-    SoSwitch* trasparencyTypeSwitch = new SoSwitch;
-    SoTransparencyType* trasparencyType = new SoTransparencyType;
-    SoSeparator* dataNode = new SoSeparator;
-    SoCoordinate3* coords = new SoCoordinate3;
-    SoSwitch* renderModeSwitch = new SoSwitch;
-    SoSeparator* shadeWithEdge = new SoSeparator;
-    SoSeparator* shadeWithoutEdge = new SoSeparator;
-    SoSeparator* transluency = new SoSeparator;
-    SoSeparator* staticWireframe = new SoSeparator;
-    SoSeparator* wireframeWithoutHidden = new SoSeparator;
-    SoSeparator* faceRoot = new SoSeparator;
-    SoSeparator* lineVisbleRoot = new SoSeparator;
-    SoMaterial* material = new SoMaterial;
-    SoPolygonOffset* offset = new SoPolygonOffset;
-    SoDrawStyle* faceStyle = new SoDrawStyle;
-    SoNormal* faceNormal = new SoNormal;
-    SoNormalBinding* normalBinding = new SoNormalBinding;
-    SoSwitch* materialSwitch = new SoSwitch;
-    SoIndexedFaceSet/*SoBrepFaceSet*/* faceSet = new SoIndexedFaceSet;
-    SoMaterial* transparentMaterial = new SoMaterial;
-    SoIndexedLineSet* lineVisibleSet = new SoIndexedLineSet;
-
-    // ViewProviderSoShow
-    m_root->addChild(bodySwitch);
-    bodySwitch->addChild(body);
-    // ViewProviderBody
-    body->addChild(scale);
-    body->addChild(trasparencyTypeSwitch);
-    body->addChild(dataNode);
-    trasparencyTypeSwitch->addChild(trasparencyType);
-    dataNode->addChild(coords);
-    dataNode->addChild(renderModeSwitch);
-    renderModeSwitch->addChild(shadeWithEdge);
-    renderModeSwitch->addChild(shadeWithoutEdge);
-    renderModeSwitch->addChild(transluency);
-    renderModeSwitch->addChild(staticWireframe);
-    renderModeSwitch->addChild(wireframeWithoutHidden);
-    shadeWithEdge->addChild(material);
-    shadeWithEdge->addChild(offset);
-    shadeWithEdge->addChild(faceRoot);
-    shadeWithEdge->addChild(lineVisbleRoot);
-    faceRoot->addChild(faceStyle);
-    faceRoot->addChild(faceNormal);
-    faceRoot->addChild(normalBinding);
-    faceRoot->addChild(materialSwitch);
-    faceRoot->addChild(faceSet);
-    materialSwitch->addChild(transparentMaterial);
-    lineVisbleRoot->addChild(lineVisibleSet);
-
-    bodySwitch->whichChild = 0;
-    trasparencyTypeSwitch->whichChild = 0;
-    renderModeSwitch->whichChild = 0;
-
-    coords->point.setValues(0, 8, pts);
-    faceSet->coordIndex.setValues(0, 48, faceIndices);
-    lineVisibleSet->coordIndex.setValues(0, 24, lineIndices);
-}
-
 
 // function
 void InventorEx::sphere()
 {
+    SoClipPlane* clip = new SoClipPlane;
+    clip->plane.setValue(SbPlane(SbVec3f(0, 1, 0), SbVec3f(0, 0, 0)));
+    m_root->addChild(clip);
     SoSphere* sphere = new SoSphere;
-    SoCube* cube = new SoCube;
-    SoDepthBuffer* depthBuf = new SoDepthBuffer;
-
-    depthBuf->test = false;
-    sphere->radius = 0.5;
-
-    m_root->addChild(depthBuf);
     m_root->addChild(sphere);
-    m_root->addChild(cube);
 }
 
 void InventorEx::cube()
@@ -2269,7 +2139,7 @@ void InventorEx::twoSideFace()
     m_root->addChild(faceSet);
 
     material->diffuseColor.setValue(1, 0, 0);
-    material->transparency = 0.8;
+    //material->transparency = 0.8;
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 48, faceIndices);
     faceSetInward->coordIndex.setValues(0, 8, faceIndicesInward);
@@ -2411,11 +2281,13 @@ void InventorEx::deferredRender()
 // 透明排序添加必须依赖于形体节点的访问，而deferredRender中在组节点处就跳出了，这是第一点矛盾
 // 第二点矛盾是，traversal、sorttranspobjpaths和delayedpaths在流程中有固有的先后顺序，延迟渲染的透明物体也不进行handleTransparency，coin在设计中就是把两者分离的
 
-// answer: 假定我们把一些透明物体和不透明物体放在新的一层，这一层的深度缓冲区是全新的，我们希望尽可能地将这一层正确地渲染（考虑SORTED_OBJECT_BLEND）
+// answer1: 假定我们把一些透明物体和不透明物体放在新的一层，这一层的深度缓冲区是全新的，我们希望尽可能地将这一层正确地渲染（考虑SORTED_OBJECT_BLEND）
 //         1. 毫无疑问的，我们需要先渲染不透明物体，这一步要开启深度测试与深度写入，不要求渲染顺序
 //         2. 在上一步构建的深度缓冲中，渲染透明物体，指定从后向前的渲染顺序是关键，深度测试开启而深度写入关闭
 //         新的课题是：如何控制一个组节点下的形体的渲染顺序
-//         用新的action
+//         想法1：在deferredRender中使用新的action，新action不将delayedpaths下子树视为延迟渲染，可以正常渲染处理透明排序
+//               这个方法有新action难以设置state的困难，既没有直接赋值接口，从头遍历属性节点也不现实
+//         想法2：给delayedpaths编号，在外部计算透明顺序，使用switchToPath控制渲染顺序
 
 void InventorEx::flat()
 {
@@ -2489,3 +2361,221 @@ void InventorEx::flat()
     face->coordIndex.setValues(0, 4, faceIndices);
 }
 
+
+void actionSwitchTo(void* userdata, SoAction* action)
+{
+    SoPath* path = (SoPath*)userdata;
+
+    //action->switchToPathTraversal(path);
+    action->apply(path);
+}
+
+void InventorEx::switchToPathTraversal()
+{
+    // figure out how to store and restore state
+
+    CREATE_NODE(SoSeparator, sep1)
+    CREATE_NODE(SoMaterial, material1)
+    CREATE_NODE(SoSphere, sphere)
+    CREATE_NODE(SoSeparator, sepAdd)
+    CREATE_NODE(SoSeparator, sep2)
+    CREATE_NODE(SoMaterial, material2)
+    CREATE_NODE(SoTranslation, trans)
+    CREATE_NODE(SoCallback, cb)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, sep1},
+        {m_root, sep2},
+        {sep1, material1},
+        {sep1, sepAdd},
+        {sepAdd, sphere},
+        {sep2, material2},
+        {sep2, trans},
+        {sep2, cb},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    material1->diffuseColor.setValue(1, 0, 0);
+    material2->diffuseColor.setValue(0, 0, 1);
+    trans->translation.setValue(1, 1, 1);
+
+    SoPath* path = new SoPath();
+    path->ref();
+    path->append(m_root);
+    path->append(sep1);
+    path->append(sepAdd);
+    path->append(sphere);
+    std::cout << path->getLength() << std::endl;
+    cb->setCallback(actionSwitchTo, path);
+
+}
+
+
+static void renderAuxViewport(void* userdata, SoAction* action)
+{
+    if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
+        return;
+
+    SoGLRenderAction* glAction = static_cast<SoGLRenderAction*>(action);
+
+    // 保存当前OpenGL状态
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    //glPushMatrix();
+
+    // 获取窗口大小
+    const SbViewportRegion& vp = glAction->getViewportRegion();
+    int windowWidth = vp.getWindowSize()[0];
+    int windowHeight = vp.getWindowSize()[1];
+
+    // 设置OpenGL视口到窗口的右下角
+    glViewport((GLint)(0.7 * windowWidth), 0,
+        (GLsizei)(0.3 * windowWidth), (GLsizei)(0.3 * windowHeight));
+
+
+    // 从当前的action状态中获取相机矩阵
+    SbMatrix modelMatrix = SoViewingMatrixElement::get(glAction->getState());
+    SbMatrix projMatrix = SoProjectionMatrixElement::get(glAction->getState());
+
+    // 创建一个与主相机相反的旋转
+    SbRotation flipRotation(SbVec3f(0, 1, 0), M_PI);
+    SbMatrix flipMatrix;
+    flipMatrix.setRotate(flipRotation);
+
+    // 将翻转旋转应用到模型矩阵
+    modelMatrix.multRight(flipMatrix);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadMatrixf((const GLfloat*)projMatrix);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadMatrixf((const GLfloat*)modelMatrix);
+
+    // 渲染球体
+    SoSphere* sphere = static_cast<SoSphere*>(userdata);
+    sphere->GLRender(glAction);
+
+    // 恢复OpenGL状态
+    glPopMatrix();
+    glPopAttrib();
+
+    SoState* state = action->getState();
+    SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
+    lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
+}
+
+void InventorEx::AuxViewport()// Not implemented yet
+{
+    SoSphere* sphere = new SoSphere; // 一个简单的球体
+    m_root->addChild(sphere);
+
+    SoCallback* auxViewportCallback = new SoCallback;
+
+    auxViewportCallback->setCallback(renderAuxViewport, sphere);
+    m_root->addChild(auxViewportCallback);
+}
+
+/*
+void cubeDrag()
+{
+    // 获取当前视口区域
+    const SbViewportRegion region = eventCB->getAction()->getViewportRegion();
+    // 获取场景的透视相机
+    SoPerspectiveCamera* camera = (SoPerspectiveCamera*)root->getChild(0);
+    // 获取当前的位置事件
+    const SoLocation2Event* locEvent = (const SoLocation2Event*)event;
+    // 获取相机的当前旋转
+    SbRotation rotation = camera->orientation.getValue();
+
+    // 计算场景移动后与上一次场景的差值
+    SbVec3f siteMove = siteAfterMove - lastSite;
+
+    // 获取视口的像素大小
+    SbVec2s viewportSize = region.getViewportSizePixels();
+    // 获取相机的视图体积
+    SbViewVolume viewVolume = camera->getViewVolume();
+
+    // 计算相机与场景之间的距离
+    SbVec3f distanceCameraSiteV = camera->position.getValue() - site;
+    float distanceCameraSite = distanceCameraSiteV.length();
+
+    // 将上次的鼠标位置转换为屏幕坐标
+    float lastMouseXinScreen = float(lastMouseX) / float(viewportSize[0]);
+    float lastMouseYinScreen = float(lastMouseY) / float(viewportSize[1]);
+    SbVec2f lastMouseInScreen(lastMouseXinScreen, lastMouseYinScreen);
+    // 将上次的鼠标屏幕坐标转换为3D世界坐标
+    SbVec3f lastMouseInWorld = viewVolume.getPlanePoint(distanceCameraSite, lastMouseInScreen);
+
+    // 获取当前鼠标位置
+    int mouseX = locEvent->getPosition()[0];
+    int mouseY = locEvent->getPosition()[1];
+    // 将当前鼠标位置转换为屏幕坐标
+    float mouseXinScreen = float(mouseX) / float(viewportSize[0]);
+    float mouseYinScreen = float(mouseY) / float(viewportSize[1]);
+    SbVec2f mouseInScreen(mouseXinScreen, mouseYinScreen);
+
+    // 计算鼠标在屏幕上的移动量
+    SbVec2f moveOnScreen = mouseInScreen - lastMouseInScreen;
+
+    // 计算屏幕上的移动与normal的关系
+    SbVec2f normal2D(normal_project_camera[0], normal_project_camera[1]);
+    float dir = moveOnScreen.dot(normal2D) / (moveOnScreen.length() * normal2D.length());
+    // 计算移动的长度
+    float lengthAlongNormal = moveOnScreen.dot(normal2D) / normal2D.length();
+    SbVec2f mouseMoved = lastMouseInScreen + lengthAlongNormal * normal2D.normalized();
+
+    // 将鼠标的移动转换为3D世界坐标
+    SbVec3f mouseInWorldMoved = viewVolume.getPlanePoint(distanceCameraSite, mouseMoved);
+
+    // 计算3D世界中的移动量
+    SbVec3f move = mouseInWorldMoved - lastMouseInWorld;
+
+    // 计算normal在相机坐标系下的投影
+    SbVec3f normalOnCamera;
+    rotation.inverse().multVec(normal, normalOnCamera);
+    // 计算场景在屏幕上的移动
+    SbVec3f siteMoveOnScreen;
+    rotation.inverse().multVec(siteMove, siteMoveOnScreen);
+    // 计算移动量与normal的夹角
+    float Cosine = sqrt(normalOnCamera[0] * normalOnCamera[0] + normalOnCamera[1] * normalOnCamera[1]) / normalOnCamera.length();
+
+    // 计算实际的移动距离
+    float distance = move.length() / Cosine;
+
+    // 根据方向调整距离
+    if (dir < 0) distance *= -1;
+    distance = normal2D.length() < 0.1 ? 0 : distance;
+    SbVec3f offset = distance * normal;
+
+    // 更新所有相关顶点的位置
+    for (int i = 0; i < face_vertex_num; ++i)
+    {
+        vertex_index = map_vertex_index[i];
+        for (auto index : vertex_index)
+        {
+            vertices[index][0] += offset[0];
+            vertices[index][1] += offset[1];
+            vertices[index][2] += offset[2];
+        }
+    }
+
+    // 创建和设置新的3D坐标点
+    SoCoordinate3* newCoords = new SoCoordinate3;
+    newCoords->point.setValues(0, face_vertex_num, vertices);
+    // 更新旧的3D坐标点
+    SoCoordinate3* coord = (SoCoordinate3*)root->getChild(4);
+    coord->point.setValues(0, face_vertex_num, vertices);
+
+    // 更新上次的鼠标位置和场景位置
+    lastMouseX = mouseX;
+    lastMouseY = mouseY;
+    lastSite += offset;
+
+    // 输出场景位置用于调试
+    std::cout << "site:" << lastSite[0] << "," << lastSite[1] << "," << lastSite[2] << std::endl;
+
+    return;
+}
+*/

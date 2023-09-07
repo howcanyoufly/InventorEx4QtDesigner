@@ -41,9 +41,6 @@ public:
 
 private:
     // functions 节点树
-    // 参考节点树
-    void superScene();
-
     // inventor mentor exercises
     void sphere();
     void cube();
@@ -79,22 +76,24 @@ private:
     SoSwitch* assembleBodyScene(const ShapeData& data);
     std::vector<ShapeData> generateRandomCuboids(int count, float maxSize);// count for quentity and maxSize for volume
     void wireframe();
-
-    void pointInCube();
-
     void colorMaskTest();
 
-    void cylinder();
-
+    // preview point forward and error performance when deep test set false
+    void pointInCube();
     void previewPointForward();
-
     void twoSideFace();
-
-    void cylinderGL();
+    void AuxViewport();
 
     void deferredRender();
-
     void flat();
+    void switchToPathTraversal();
+
+    // SoLazyElement, SoState, SoGLRenderAction and openGL state
+
+
+    // cylinder outline
+    void cylinder();
+    void cylinderGL();
 
     // plugins
     void loadPickAndWrite();
