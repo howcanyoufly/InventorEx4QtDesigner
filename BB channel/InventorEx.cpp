@@ -1647,6 +1647,58 @@ void InventorEx::hiddenLine()
     secondPassSeparator->addChild(lineSet2);
 }
 
+std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids(int count, float maxSize)
+{
+    std::vector<ShapeData> datasets;
+    srand(time(NULL));
+
+    for (int i = 0; i < count; ++i) {
+        ShapeData data;
+        float startX = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
+        float startY = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
+        float startZ = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
+
+        float size = 0.5f + static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5f; // size between 0.5 and 1.0
+
+        for (int j = 0; j < 8; ++j) {
+            float x = startX + ((j & 1) ^ ((j & 2) >> 1) ? size : 0);
+            float y = startY + ((j & 2) ? size : 0);
+            float z = startZ + ((j & 4) ? size : 0);
+            data.points.push_back({ x, y, z });
+        }
+
+        data.faceIndices = {
+            0, 2, 1, SO_END_FACE_INDEX,
+            0, 3, 2, SO_END_FACE_INDEX,
+            0, 1, 5, SO_END_FACE_INDEX,
+            0, 5, 4, SO_END_FACE_INDEX,
+            1, 2, 6, SO_END_FACE_INDEX,
+            1, 6, 5, SO_END_FACE_INDEX,
+            2, 3, 6, SO_END_FACE_INDEX,
+            3, 7, 6, SO_END_FACE_INDEX,
+            3, 4, 7, SO_END_FACE_INDEX,
+            0, 4, 3, SO_END_FACE_INDEX,
+            4, 5, 7, SO_END_FACE_INDEX,
+            5, 6, 7, SO_END_FACE_INDEX,
+        };
+        data.lineIndices = {
+            0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+            4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+            0, 4, SO_END_LINE_INDEX,
+            1, 5, SO_END_LINE_INDEX,
+            2, 6, SO_END_LINE_INDEX,
+            3, 7, SO_END_LINE_INDEX
+        };
+
+        datasets.push_back(data);
+    }
+
+    return datasets;
+}
+
+#define CUBECOUNT 20
+#define  USEDELAYRENDER
+#ifdef USEDELAYRENDER
 /*
 About polygonOffset:
     With the position of the polygonOffset node being placed before the frameSwitch, the question arises: what's its effective range?
@@ -1770,55 +1822,6 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     return bodySwitch;
 }
 
-std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids(int count, float maxSize)
-{
-    std::vector<ShapeData> datasets;
-    srand(time(NULL));
-
-    for (int i = 0; i < count; ++i) {
-        ShapeData data;
-        float startX = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
-        float startY = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
-        float startZ = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * maxSize;
-
-        float size = 0.5f + static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 0.5f; // size between 0.5 and 1.0
-
-        for (int j = 0; j < 8; ++j) {
-            float x = startX + ((j & 1) ^ ((j & 2) >> 1) ? size : 0);
-            float y = startY + ((j & 2) ? size : 0);
-            float z = startZ + ((j & 4) ? size : 0);
-            data.points.push_back({ x, y, z });
-        }
-
-        data.faceIndices = {
-            0, 2, 1, SO_END_FACE_INDEX,
-            0, 3, 2, SO_END_FACE_INDEX,
-            0, 1, 5, SO_END_FACE_INDEX,
-            0, 5, 4, SO_END_FACE_INDEX,
-            1, 2, 6, SO_END_FACE_INDEX,
-            1, 6, 5, SO_END_FACE_INDEX,
-            2, 3, 6, SO_END_FACE_INDEX,
-            3, 7, 6, SO_END_FACE_INDEX,
-            3, 4, 7, SO_END_FACE_INDEX,
-            0, 4, 3, SO_END_FACE_INDEX,
-            4, 5, 7, SO_END_FACE_INDEX,
-            5, 6, 7, SO_END_FACE_INDEX,
-        };
-        data.lineIndices = {
-            0, 1, 2, 3, 0, SO_END_LINE_INDEX,
-            4, 5, 6, 7, 4, SO_END_LINE_INDEX,
-            0, 4, SO_END_LINE_INDEX,
-            1, 5, SO_END_LINE_INDEX,
-            2, 6, SO_END_LINE_INDEX,
-            3, 7, SO_END_LINE_INDEX
-        };
-
-        datasets.push_back(data);
-    }
-
-    return datasets;
-}
-
 /*
     "faces are first rendered with #red, #green, #blue and #alpha masks
     to FALSE, so that only depth is written. Then, the shape is rendered in
@@ -1832,8 +1835,6 @@ Why can't we set color masks during the individual body rendering process?
     they don't update the color buffer. As a result, the edges of the first cube aren't obscured by the facets of the second cube.
     Essentially, you cannot hide edges using facets that haven't been rendered yet.
 
-    想法：使用延迟渲染是否只需要渲染一遍
-
 m_root
 │
 ├── SoGradientBackground
@@ -1842,7 +1843,7 @@ m_root
 */
 void InventorEx::wireframe()
 {
-    std::vector<ShapeData> randomCuboids = generateRandomCuboids(20/*count*/, 5.0/*size*/);
+    std::vector<ShapeData> randomCuboids = generateRandomCuboids(CUBECOUNT/*count*/, 5.0/*size*/);
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
     CREATE_NODE(SoSeparator, secondPassSeparator)
@@ -1885,6 +1886,220 @@ void InventorEx::wireframe()
         }
     }
 }
+#else
+/*
+bodySwitch
+│
+└── body
+    ├── scale
+    ├── trasparencyTypeSwitch
+    │   └── trasparencyType
+    └── dataNode
+        ├── coords
+        └── renderModeSwitch
+            ├── shadeWithEdge
+            ├── shadeWithoutEdge
+            ├── transluency
+            ├── staticWireframe
+            │   ├── polygonOffset
+            │   └── frameSwitch
+            │       ├── faceRoot
+            │       │   ├── faceStyle
+            │       │   ├── faceNormal
+            │       │   ├── normalBinding
+            │       │   ├── materialSwitch
+            │       │   │   └── transparentMaterial
+            │       │   └── faceSet
+            │       └── lineRoot
+            │           ├── lineVisibleRoot
+            │           │   └── [*]lineSet
+            │           └── lineHiddenSwitch
+            │               └── lineHiddenRoot
+            │                   ├── depthbuffer
+            │                   ├── wireStyleSwitch
+            │                   │   ├── dashedLinestyle
+            │                   │   └── dimColor
+            │                   └── [*]lineSet
+            └── wireframeWithoutHidden
+
+    [*]: shared node
+*/
+SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
+{
+    CREATE_NODE(SoSwitch, bodySwitch)
+    CREATE_NODE(SoSeparator, body)
+    CREATE_NODE(SoScale, scale)
+    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+    CREATE_NODE(SoTransparencyType, trasparencyType)
+    CREATE_NODE(SoSeparator, dataNode)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoSwitch, renderModeSwitch)
+    CREATE_NODE(SoSeparator, shadeWithEdge)
+    CREATE_NODE(SoSeparator, shadeWithoutEdge)
+    CREATE_NODE(SoSeparator, transluency)
+    CREATE_NODE(SoSeparator, staticWireframe)
+    CREATE_NODE(SoSeparator, wireframeWithoutHidden)
+    CREATE_NODE(SoSwitch, frameSwitch)
+    CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
+    CREATE_NODE(SoDrawStyle, faceStyle)
+    CREATE_NODE(SoNormal, faceNormal)
+    CREATE_NODE(SoNormalBinding, normalBinding)
+    CREATE_NODE(SoSwitch, materialSwitch)
+    CREATE_NODE(SoMaterial, transparentMaterial)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+    CREATE_NODE(SoSeparator, lineRoot)
+    CREATE_NODE(SoSeparator, lineVisibleRoot)
+    CREATE_NODE(SoSwitch, lineHiddenSwitch)
+    CREATE_NODE(SoSeparator, lineHiddenRoot)
+    CREATE_NODE(SoDepthBuffer, depthbuffer)
+    CREATE_NODE(SoSwitch, wireStyleSwitch)
+    CREATE_NODE(SoDrawStyle, dashedLinestyle)
+    CREATE_NODE(SoBaseColor, dimColor)
+    CREATE_NODE(SoIndexedLineSet, lineSet)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {bodySwitch, body},
+        {body, scale},
+        {body, trasparencyTypeSwitch},
+        {body, dataNode},
+        {trasparencyTypeSwitch, trasparencyType},
+        {dataNode, coords},
+        {dataNode, renderModeSwitch},
+        {renderModeSwitch, shadeWithEdge},
+        {renderModeSwitch, shadeWithoutEdge},
+        {renderModeSwitch, transluency},
+        {renderModeSwitch, staticWireframe},
+        {renderModeSwitch, wireframeWithoutHidden},
+        {staticWireframe, polygonOffset},
+        {staticWireframe, frameSwitch},
+        {frameSwitch, faceRoot},
+        {frameSwitch, lineRoot},
+        {faceRoot, faceStyle},
+        {faceRoot, faceNormal},
+        {faceRoot, normalBinding},
+        {faceRoot, materialSwitch},
+        {faceRoot, faceSet},
+        {materialSwitch, transparentMaterial},
+        {lineRoot, lineVisibleRoot},
+        {lineRoot, lineHiddenSwitch},
+        {lineVisibleRoot, lineSet},
+        {lineHiddenSwitch, lineHiddenRoot},
+        {lineHiddenRoot, depthbuffer},
+        {lineHiddenRoot, wireStyleSwitch},
+        {wireStyleSwitch, dashedLinestyle},
+        {wireStyleSwitch, dimColor},
+        {lineHiddenRoot, lineSet},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    bodySwitch->whichChild = 0;
+    trasparencyTypeSwitch->whichChild = 0;
+    renderModeSwitch->whichChild = 3;
+    frameSwitch->whichChild = 0;// for adaptive view
+
+    depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
+
+    dashedLinestyle->linePattern.setValue(0xff00);
+
+    dimColor->rgb.setValue(0.5, 0.5, 0.5);
+
+    coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
+    faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
+    lineSet->coordIndex.setValues(0, data.lineIndices.size(), data.lineIndices.data());
+
+    return bodySwitch;
+}
+
+/*
+m_root
+│
+├── SoGradientBackground
+│
+├── firstPassSeparator
+│   ├── colorMask
+│   ├── switchToFacet
+│   └── [*]bodies
+│
+└── secondPassSeparator
+    ├── lightModel
+    ├── switchToEdge
+    └── [*]bodies
+
+    [*]: shared node
+*/
+void InventorEx::wireframe()
+{
+    std::vector<ShapeData> randomCuboids = generateRandomCuboids(CUBECOUNT/*count*/, 5.0/*size*/);
+
+    CREATE_NODE(SoSeparator, firstPassSeparator)
+    CREATE_NODE(SoSeparator, secondPassSeparator)
+    CREATE_NODE(SoSeparator, bodies)
+    CREATE_NODE(SoSwitchToChild, switchToFacet)
+    CREATE_NODE(SoSwitchToChild, switchToEdge)
+    CREATE_NODE(SoColorMask, colorMask)
+    CREATE_NODE(SoLightModel, lightModel)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, new SoGradientBackground},
+        {m_root, firstPassSeparator},
+        {m_root, secondPassSeparator},
+        {firstPassSeparator, colorMask},
+        {firstPassSeparator, switchToFacet},
+        {firstPassSeparator, bodies},
+        {secondPassSeparator, lightModel},
+        {secondPassSeparator, switchToEdge},
+        {secondPassSeparator, bodies},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+    for (const auto& data : randomCuboids)
+    {
+        ADD_CHILD(bodies, assembleBodyScene(data));
+    }
+
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+
+    switchToFacet->switchName = "frameSwitch";
+    switchToFacet->toWhichChild = 0;
+    switchToFacet->searchRange = bodies;
+
+    switchToEdge->switchName = "frameSwitch";
+    switchToEdge->toWhichChild = 1;
+    switchToEdge->searchRange = bodies;
+
+    lightModel->model = SoLightModel::BASE_COLOR;// 渲染将只使用当前材质的漫反射颜色和透明度
+
+    std::cout << "-1 for Hidden\n0 for Dashed\n1 for Dim" << std::endl;
+    int option = -1;
+    std::cin >> option;
+    if (-1 != option)
+    {
+        std::vector<SoSwitch*> switchVec;
+        switchVec = searchNodes<SoSwitch>(bodies, "lineHiddenSwitch");
+        for (auto& node : switchVec)
+        {
+            node->whichChild = 0;
+        }
+
+        switchVec = searchNodes<SoSwitch>(bodies, "wireStyleSwitch");
+        for (auto& node : switchVec)
+        {
+            node->whichChild = option;
+        }
+    }
+}
+#endif
 
 void InventorEx::pointInCube()
 {
@@ -2094,31 +2309,10 @@ void InventorEx::twoSideFace()
     };
     int32_t faceIndices[48] = {
         0, 2, 1, SO_END_FACE_INDEX,
-        //0, 3, 2, SO_END_FACE_INDEX,
-        //0, 1, 5, SO_END_FACE_INDEX,
-        //0, 5, 4, SO_END_FACE_INDEX,
-        //1, 2, 6, SO_END_FACE_INDEX,
-        //1, 6, 5, SO_END_FACE_INDEX,
-        //2, 3, 6, SO_END_FACE_INDEX,
-        //3, 7, 6, SO_END_FACE_INDEX,
-        //3, 4, 7, SO_END_FACE_INDEX,
-        //0, 4, 3, SO_END_FACE_INDEX,
-        //4, 6, 7, SO_END_FACE_INDEX,
         4, 5, 6, SO_END_FACE_INDEX,
     };
     int32_t faceIndicesInward[48] = {
         0, 1, 2, SO_END_FACE_INDEX,
-        //0, 2, 3, SO_END_FACE_INDEX,
-        //0, 5, 1, SO_END_FACE_INDEX,
-        //0, 4, 5, SO_END_FACE_INDEX,
-        //1, 6, 2, SO_END_FACE_INDEX,
-        //1, 5, 6, SO_END_FACE_INDEX,
-        //2, 6, 3, SO_END_FACE_INDEX,
-        //3, 6, 7, SO_END_FACE_INDEX,
-        //3, 7, 4, SO_END_FACE_INDEX,
-        //0, 3, 4, SO_END_FACE_INDEX,
-        //4, 7, 5, SO_END_FACE_INDEX,
-        //5, 7, 6, SO_END_FACE_INDEX,
         4, 6, 5, SO_END_FACE_INDEX
     };
 
@@ -2403,6 +2597,7 @@ void InventorEx::switchToPathTraversal()
     material2->diffuseColor.setValue(0, 0, 1);
     trans->translation.setValue(1, 1, 1);
 
+    // 因为view会添加camera和light，这里m_root并不是真正的根节点
     SoPath* path = new SoPath();
     path->ref();
     path->append(m_root);
