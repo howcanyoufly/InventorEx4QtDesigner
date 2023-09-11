@@ -1,7 +1,9 @@
-
+    
 #include "InventorEx.h"
 
+#include <Inventor/SoEventManager.h>
 #include <Inventor/SoPickedPoint.h>
+#include <Inventor/SoFullPath.h>
 #include <Inventor/nodes/SoNode.h>
 #include <Inventor/nodes/SoCone.h>
 #include <Inventor/nodes/SoCube.h>
@@ -114,6 +116,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"switchToPathTraversal", std::bind(&InventorEx::switchToPathTraversal, this)},
         {"auxViewport", std::bind(&InventorEx::auxViewport, this)},
         {"actStateOfDelayList", std::bind(&InventorEx::actStateOfDelayList, this)},
+        {"traversalPerformance", std::bind(&InventorEx::traversalPerformance, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -531,7 +534,7 @@ void InventorEx::referenceCount()
     {
         std::cout << refCount[i] << ' ';
     }
-    std::cout << std::endl << std::endl;
+    std::cout << std::endl;
 
     P->ref();
     refCount[0] = P->getRefCount();
@@ -542,9 +545,9 @@ void InventorEx::referenceCount()
     {
         std::cout << refCount[i] << ' ';
     }
-    std::cout << std::endl << std::endl;
+    std::cout << std::endl;
 
-    std::cout << "0 for unref\n1 for unrefNoDelete\n2 for removeAllChildren" << std::endl;
+    std::cout << "0 for unref\n1 for unrefNoDelete\n2 for removeAllChildren\n3 for removeChild" << std::endl;
     int isDelete = 0;
     std::cin >> isDelete;
     switch (isDelete)
@@ -557,6 +560,9 @@ void InventorEx::referenceCount()
         break;
     case 2:
         P->removeAllChildren();
+        break;
+    case 3:
+        P->removeChild(Q);
         break;
 
     }
@@ -1697,7 +1703,7 @@ std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids
 }
 
 #define CUBECOUNT 20
-#define  USEDELAYRENDER
+//#define  USEDELAYRENDER
 #ifdef USEDELAYRENDER
 /*
 About polygonOffset:
@@ -2579,7 +2585,7 @@ void InventorEx::switchToPathTraversal()
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
-        {m_root, sep1},
+        //{m_root, sep1},
         {m_root, sep2},
         {sep1, material1},
         {sep1, sepAdd},
@@ -2597,16 +2603,19 @@ void InventorEx::switchToPathTraversal()
     material2->diffuseColor.setValue(0, 0, 1);
     trans->translation.setValue(1, 1, 1);
 
-    // 因为view会添加camera和light，这里m_root并不是真正的根节点
+    m_viewer->setSceneGraph(m_root);
+
+    // view会添加camera和light，这里m_root并不是真正的根节点，可以通过m_viewer->getSoRenderManager()->getSceneGraph()获取
+    // 对于Recursive repaint问题，使用未被引用的节点树
+    // 但是都解决不掉fulllength越界的问题
     SoPath* path = new SoPath();
     path->ref();
-    path->append(m_root);
     path->append(sep1);
     path->append(sepAdd);
     path->append(sphere);
-    std::cout << path->getLength() << std::endl;
+    std::cout << "length: " << path->getLength() << std::endl;
+    std::cout << "full length: " << ((SoFullPath*)path)->getLength() << std::endl;
     cb->setCallback(actionSwitchTo, path);
-
 }
 
 
@@ -2845,3 +2854,105 @@ void InventorEx::actStateOfDelayList()
     face->coordIndex.setValues(0, 4, faceIndices);
 }
 
+
+SoSeparator* InventorEx::assembleEasyBody(const ShapeData& data, bool usePath)
+{
+    SoSeparator* face = NULL;
+    if (usePath)
+        face = new SoDeferredRender;
+    else
+        face = new SoSeparator;
+
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {face, coords},
+        {face, faceSet},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
+    faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
+
+    return face;
+}
+
+SoSeparator* InventorEx::usePathAssemble(std::vector<ShapeData> randomCuboids, bool usePath)
+{
+    CREATE_NODE(SoSeparator, bodies)
+    CREATE_NODE(SoScale, scale)
+    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+    CREATE_NODE(SoTransparencyType, trasparencyType)
+    CREATE_NODE(SoSeparator, dataNode)
+    CREATE_NODE(SoSwitch, renderModeSwitch)
+    CREATE_NODE(SoSeparator, shadeWithEdge)
+    CREATE_NODE(SoSeparator, shadeWithoutEdge)
+    CREATE_NODE(SoSeparator, transluency)
+    CREATE_NODE(SoSeparator, staticWireframe)
+    CREATE_NODE(SoSeparator, wireframeWithoutHidden)
+    CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
+    CREATE_NODE(SoDrawStyle, faceStyle)
+    CREATE_NODE(SoNormal, faceNormal)
+    CREATE_NODE(SoNormalBinding, normalBinding)
+    CREATE_NODE(SoSwitch, materialSwitch)
+    CREATE_NODE(SoMaterial, transparentMaterial)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {bodies, scale},
+        {bodies, trasparencyTypeSwitch},
+        {bodies, dataNode},
+        {trasparencyTypeSwitch, trasparencyType},
+        {dataNode, renderModeSwitch},
+        {renderModeSwitch, shadeWithEdge},
+        {renderModeSwitch, shadeWithoutEdge},
+        {renderModeSwitch, transluency},
+        {renderModeSwitch, staticWireframe},
+        {renderModeSwitch, wireframeWithoutHidden},
+        {staticWireframe, polygonOffset},
+        {staticWireframe, faceRoot},
+        {faceRoot, faceStyle},
+        {faceRoot, faceNormal},
+        {faceRoot, normalBinding},
+        {faceRoot, materialSwitch},
+        {materialSwitch, transparentMaterial},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    for (const auto& data : randomCuboids)
+    {
+        ADD_CHILD(faceRoot, assembleEasyBody(data, usePath));
+    }
+
+    trasparencyTypeSwitch->whichChild = 0;
+    renderModeSwitch->whichChild = 3;
+
+    return bodies;
+}
+
+void InventorEx::traversalPerformance()
+{
+    std::cout << "use path?: " << std::endl;
+    bool option = false;
+    std::cin >> option;
+
+    if (0 == m_randomCuboids.size())
+        m_randomCuboids = generateRandomCuboids(20000, 5.0);
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, usePathAssemble(m_randomCuboids, option)},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+}

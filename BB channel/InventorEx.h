@@ -82,12 +82,16 @@ private:
     void pointInCube();
     void previewPointForward();
     void twoSideFace();
-    void auxViewport();
-
-    void actStateOfDelayList();
+    void auxViewport();// not implement yet
     void deferredRender();
     void flat();
+
+    // discover PATH and its traversal
+    void actStateOfDelayList();
     void switchToPathTraversal();
+    SoSeparator* usePathAssemble(std::vector<ShapeData> randomCuboids, bool usePath = true);
+    SoSeparator* assembleEasyBody(const ShapeData& data, bool usePath = false);
+    void traversalPerformance();
 
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
@@ -113,6 +117,7 @@ private:
     SoSeparator* m_root;
 
     bool m_reset;// function does but plugin does not
+    std::vector<ShapeData> m_randomCuboids;
 };
 
 
