@@ -106,6 +106,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"hiddenLine", std::bind(&InventorEx::hiddenLine, this)},
         {"wireframe", std::bind(&InventorEx::wireframe, this)},
         {"pointInCube", std::bind(&InventorEx::pointInCube, this)},
+        {"showRotationCenter", std::bind(&InventorEx::showRotationCenter, this)},
         {"colorMaskTest", std::bind(&InventorEx::colorMaskTest, this)},
         {"cylinderIV", std::bind(&InventorEx::cylinder, this)},
         {"previewPointForward", std::bind(&InventorEx::previewPointForward, this)},
@@ -117,6 +118,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"auxViewport", std::bind(&InventorEx::auxViewport, this)},
         {"actStateOfDelayList", std::bind(&InventorEx::actStateOfDelayList, this)},
         {"traversalPerformance", std::bind(&InventorEx::traversalPerformance, this)},
+        {"isDelayRenderNessery", std::bind(&InventorEx::isDelayRenderNessery, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -277,6 +279,9 @@ void InventorEx::sphere()
     clip->plane.setValue(SbPlane(SbVec3f(0, 1, 0), SbVec3f(0, 0, 0)));
     m_root->addChild(clip);
     SoSphere* sphere = new SoSphere;
+    SoDepthBuffer* depth = new SoDepthBuffer;
+    depth->test.setValue(false);
+    m_root->addChild(depth);
     m_root->addChild(sphere);
 }
 
@@ -1703,7 +1708,7 @@ std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids
 }
 
 #define CUBECOUNT 20
-//#define  USEDELAYRENDER
+#define  USEDELAYRENDER
 #ifdef USEDELAYRENDER
 /*
 About polygonOffset:
@@ -2115,8 +2120,7 @@ void InventorEx::pointInCube()
     CREATE_NODE(SoMaterial, material)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoLightModel, lightModel)
-    CREATE_NODE(SoPointLight, light1)
-    CREATE_NODE(SoPointLight, light2)
+    CREATE_NODE(SoShapeHints, shapeHints)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
@@ -2125,6 +2129,7 @@ void InventorEx::pointInCube()
         {separator, depthbuffer},
         {separator, lightModel},
         {separator, material},
+        //{separator, shapeHints},
         {separator, point},
     };
 
@@ -2141,19 +2146,62 @@ void InventorEx::pointInCube()
     point->depth = 2;
     //point->radius = 1.0f;
 
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
     material->diffuseColor.setValue(1.0, 0.0, 0.0);
     material->specularColor.setValue(1.0, 0.0, 0.0);
     depthbuffer->function = SoDepthBuffer::ALWAYS;
-    depthbuffer->range.setValue(0.0, 1.0);
     std::cout << "0 for Base_Color\n1 for Phong" << std::endl;
     int model;
     std::cin >> model;
-
     lightModel->model = (SoLightModel::Model)model;
-
-    light1->location.setValue(1.5, 1.5, 1.5);
-    light2->location.setValue(0.5, 0.5, 0.5);
 }
+
+void InventorEx::showRotationCenter()
+{
+    CREATE_NODE(SoSeparator, separator)
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoSphere, point)
+    CREATE_NODE(SoDepthBuffer, depthBuffer)
+    CREATE_NODE(SoComplexity, complexity)
+    CREATE_NODE(SoMaterial, material)
+    CREATE_NODE(SoLightModel, lightModel)
+    CREATE_NODE(SoShapeHints, shapeHints)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        //{m_root, cube},
+        {m_root, separator},
+        {separator, depthBuffer},
+        {separator, lightModel},
+        {separator, material},
+        {separator, shapeHints},
+        {separator, point},
+    };
+
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    cube->width = 10;
+    cube->height = 10;
+    cube->depth = 10;
+    point->radius = 1;
+
+    complexity->value = 1;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+
+    material->emissiveColor = SbColor(1, 0, 0);
+    material->transparency = 0.8;
+    depthBuffer->function = SoDepthBuffer::ALWAYS;
+    std::cout << "0 for Base_Color\n1 for Phong" << std::endl;
+    int model;
+    std::cin >> model;
+    lightModel->model = (SoLightModel::Model)model;
+}
+
 
 void InventorEx::colorMaskTest()
 {
@@ -2209,7 +2257,7 @@ void InventorEx::cylinder()
 
 }
 
-void clearDepthBufferCB(void* userdata, SoAction* action) 
+void glClearDepthBuffer(void* userdata, SoAction* action) 
 {
     if (action->isOfType(SoGLRenderAction::getClassTypeId())) 
     {
@@ -2246,7 +2294,7 @@ void InventorEx::previewPointForward()
         separator->addChild(material);
         separator->addChild(cleanDepthBuffCB);
         separator->addChild(point);
-        cleanDepthBuffCB->setCallback(clearDepthBufferCB);
+        cleanDepthBuffCB->setCallback(glClearDepthBuffer);
     	break;
     case 1:
         m_root->addChild(cube);
@@ -2955,4 +3003,72 @@ void InventorEx::traversalPerformance()
     {
         ADD_CHILD(relationship.first, relationship.second);
     }
+}
+
+void InventorEx::isDelayRenderNessery()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+    CREATE_NODE(SoTranslation, translation)
+    CREATE_NODE(SoSeparator, redTransFace)
+    CREATE_NODE(SoSeparator, greenFace)
+    CREATE_NODE(SoSeparator, blueTransFace)
+    CREATE_NODE(SoMaterial, redMaterial)
+    CREATE_NODE(SoMaterial, greenMaterial)
+    CREATE_NODE(SoMaterial, blueMaterial)
+    CREATE_NODE(SoCallback, cb)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, coords},
+        {m_root, shapeHints},
+        {m_root, redTransFace},
+        {m_root, translation},
+        {m_root, greenFace},
+        {m_root, translation},
+        {m_root, blueTransFace},
+        {redTransFace, redMaterial},
+        {redTransFace, faceSet},
+        {greenFace, greenMaterial},
+        {greenFace, faceSet},
+        {blueTransFace, cb},
+        {blueTransFace, blueMaterial},
+        {blueTransFace, faceSet},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    redMaterial->diffuseColor.setValue(1, 0, 0);
+    redMaterial->transparency.setValue(0.5);
+    greenMaterial->diffuseColor.setValue(0, 1, 0);
+    blueMaterial->diffuseColor.setValue(0, 0, 1);
+    blueMaterial->transparency.setValue(0.5);
+
+    translation->translation.setValue(0, 0, 0.2);
+
+    cb->setCallback(glClearDepthBuffer);
+
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 4, faceIndices);
+
 }

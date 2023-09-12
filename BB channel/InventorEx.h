@@ -64,8 +64,8 @@ private:
     void buildFloor();
     void glCallback();
 
-    // Order-Independent-Transparency, a preliminary attempt£¬riddled with errors and flaws
-    void oit();
+    // Order-Independent-Transparency
+    void oit();// not implement yet
 
     // hiddenline discovery2
     void simpleDepthTest();
@@ -80,6 +80,7 @@ private:
 
     // preview point forward and error performance when deep test set false
     void pointInCube();
+    void showRotationCenter();
     void previewPointForward();
     void twoSideFace();
     void auxViewport();// not implement yet
@@ -88,10 +89,14 @@ private:
 
     // discover PATH and its traversal
     void actStateOfDelayList();
-    void switchToPathTraversal();
+    void switchToPathTraversal();// something wrong
     SoSeparator* usePathAssemble(std::vector<ShapeData> randomCuboids, bool usePath = true);
     SoSeparator* assembleEasyBody(const ShapeData& data, bool usePath = false);
     void traversalPerformance();
+
+    // multi-flat render
+    void isDelayRenderNessery();
+
 
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
