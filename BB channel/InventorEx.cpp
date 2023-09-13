@@ -2557,10 +2557,13 @@ void InventorEx::flat()
     CREATE_NODE(SoShapeHints, shapeHints)
     CREATE_NODE(SoDeferredRender, firstFloor)
     CREATE_NODE(SoDeferredRender, secondFloor)
-    CREATE_NODE(SoMaterial, firstFloorMaterial)
-    CREATE_NODE(SoMaterial, firstFloorMaterialPlus)
+    CREATE_NODE(SoSeparator, redFace)
+    CREATE_NODE(SoSeparator, greenFace)
+    CREATE_NODE(SoMaterial, redMaterial)
+    CREATE_NODE(SoMaterial, greenMaterial)
     CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoTranslation, firstFloorTranslation)
+    CREATE_NODE(SoTranslation, redTranslation)
+    CREATE_NODE(SoTranslation, greenTranslation)
     CREATE_NODE(SoTranslation, secondFloorTranslation)
     CREATE_NODE(SoCoordinate3, coords)
     CREATE_NODE(SoIndexedFaceSet, face)
@@ -2572,12 +2575,14 @@ void InventorEx::flat()
         {m_root, face},
         {m_root, firstFloor},
         {m_root, secondFloor},
-        {firstFloor, firstFloorMaterial},
-        {firstFloor, firstFloorTranslation},
-        {firstFloor, face},
-        {firstFloor, firstFloorMaterialPlus},
-        {firstFloor, firstFloorTranslation},
-        {firstFloor, face},
+        {firstFloor, redFace},
+        {firstFloor, greenFace},
+        {redFace, redMaterial},
+        {redFace, redTranslation},
+        {redFace, face},
+        {greenFace, greenMaterial},
+        {greenFace, greenTranslation},
+        {greenFace, face},
         {secondFloor, secondFloorMaterial},
         {secondFloor, secondFloorTranslation},
         {secondFloor, face},
@@ -2596,14 +2601,15 @@ void InventorEx::flat()
     firstFloor->clearDepthBuffer = option;
     secondFloor->clearDepthBuffer = option;
 
-    firstFloorMaterial->diffuseColor.setValue(1, 0, 0);
-    firstFloorMaterial->transparency.setValue(0.8);
-    firstFloorMaterialPlus->diffuseColor.setValue(0, 1, 0);
-    firstFloorMaterialPlus->transparency.setValue(0.8);
+    redMaterial->diffuseColor.setValue(1, 0, 0);
+    redMaterial->transparency.setValue(0.8);
+    greenMaterial->diffuseColor.setValue(0, 1, 0);
+    greenMaterial->transparency.setValue(0.8);
     secondFloorMaterial->diffuseColor.setValue(0, 0, 1);
     secondFloorMaterial->transparency.setValue(0.8);
 
-    firstFloorTranslation->translation.setValue(0, 0, 0.2);
+    redTranslation->translation.setValue(0, 0, 0.4);
+    greenTranslation->translation.setValue(0, 0, 0.2);
     secondFloorTranslation->translation.setValue(0, 0, 0.6);
 
     coords->point.setValues(0, 8, pts);
