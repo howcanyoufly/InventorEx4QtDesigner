@@ -13,6 +13,8 @@
 #else // __APPLE__
 #include <GL/gl.h>
 #endif // __APPLE__
+#include "utils.h"
+#include <Inventor/elements/SoGLLazyElement.h>
 
 SO_NODE_SOURCE(SoDeferredRender);
 
@@ -68,10 +70,12 @@ SoDeferredRender::GLRender(SoGLRenderAction* action)
     }
 }
 
+//#define USENEWACTION
 // Doc in superclass.
 void
 SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 {
+#ifdef USENEWACTION
     if (isUsingNewAction)
     {
         // 正常渲染
@@ -82,8 +86,10 @@ SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
         // 从delayedpaths进入
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
+
         // 创建并配置新的SoGLRenderAction
         SoGLRenderAction newAction(action->getViewportRegion());
+        copyGLRenderAction(*action, newAction);
         SoPath* newPath = action->getCurPath()->copy();
         newPath->ref();
         isUsingNewAction = TRUE;
@@ -95,12 +101,27 @@ SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
     {
         SoCacheElement::invalidate(action->getState());
         action->addDelayedPath(action->getCurPath()->copy());
+
     }
+#else
+    if (action->isRenderingDelayedPaths())
+    {
+        if (clearDepthBuffer.getValue())
+            glClear(GL_DEPTH_BUFFER_BIT);
+        inherited::GLRenderBelowPath(action);
+    }
+    else
+    {
+        SoCacheElement::invalidate(action->getState());
+        action->addDelayedPath(action->getCurPath()->copy());
+    }
+#endif
 }
 
 // Doc in superclass.
 void SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
 {
+#ifdef USENEWACTION
     if (isUsingNewAction)
     {
         // 正常渲染
@@ -111,8 +132,10 @@ void SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
         // 从delayedpaths进入
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
+
         // 创建并配置新的SoGLRenderAction
         SoGLRenderAction newAction(action->getViewportRegion());
+        copyGLRenderAction(*action, newAction);
         SoPath* newPath = action->getCurPath()->copy();
         newPath->ref();
         isUsingNewAction = TRUE;
@@ -125,6 +148,19 @@ void SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
         SoCacheElement::invalidate(action->getState());
         action->addDelayedPath(action->getCurPath()->copy());
     }
+#else
+    if (action->isRenderingDelayedPaths())
+    {
+        if (clearDepthBuffer.getValue())
+            glClear(GL_DEPTH_BUFFER_BIT);
+        inherited::GLRenderInPath(action);
+    }
+    else
+    {
+        SoCacheElement::invalidate(action->getState());
+        action->addDelayedPath(action->getCurPath()->copy());
+    }
+#endif
 }
 
 // Doc in superclass.

@@ -96,7 +96,7 @@ private:
 
     // multi-flat render
     void isDelayRenderNessery();
-
+    void twoSideLightInDelayRender();
 
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 

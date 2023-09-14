@@ -3,6 +3,7 @@
 #include <vector>
 #include <Inventor/nodes/SoSeparator.h>
 #include <Inventor/actions/SoSearchAction.h>
+#include <Inventor/actions/SoGLRenderAction.h>
 
 #include "InventorEx.h"
 
@@ -134,3 +135,38 @@ std::vector<T*> searchNodes(SoNode* scene, SbName name)
     return ret;
 }
 
+typedef SoGLRenderAction::AbortCode SoGLRenderAbortCB(void* userdata);
+inline void copyGLRenderAction(const SoGLRenderAction& sourceAct, SoGLRenderAction& targetAct)
+{
+    // Viewport and update area settings
+    targetAct.setViewportRegion(sourceAct.getViewportRegion());
+    SbVec2f origin, size;
+    sourceAct.getUpdateArea(origin, size);
+    targetAct.setUpdateArea(origin, size);
+
+    // Abort callback settings
+    SoGLRenderAbortCB* abortCallback = NULL;
+    void* abortUserData = NULL;
+    sourceAct.getAbortCallback(abortCallback, abortUserData);
+    targetAct.setAbortCallback(abortCallback, abortUserData);
+
+    // Transparency settings
+    targetAct.setTransparencyType(sourceAct.getTransparencyType());
+    targetAct.setTransparentDelayedObjectRenderType(sourceAct.getTransparentDelayedObjectRenderType());
+
+    // Smoothing settings
+    targetAct.setSmoothing(sourceAct.isSmoothing());
+
+    // Render pass settings
+    targetAct.setNumPasses(sourceAct.getNumPasses());
+    targetAct.setPassUpdate(sourceAct.isPassUpdate());
+
+    // Cache and remote rendering settings
+    targetAct.setCacheContext(sourceAct.getCacheContext());
+    targetAct.setRenderingIsRemote(sourceAct.getRenderingIsRemote());
+
+    // Delayed paths and sorting settings
+    targetAct.setSortedLayersNumPasses(sourceAct.getSortedLayersNumPasses());
+    targetAct.setSortedObjectOrderStrategy(SoGLRenderAction::BBOX_CENTER);
+    targetAct.setDelayedObjDepthWrite(sourceAct.getDelayedObjDepthWrite());
+}

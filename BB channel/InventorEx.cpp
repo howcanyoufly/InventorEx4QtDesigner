@@ -119,6 +119,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"actStateOfDelayList", std::bind(&InventorEx::actStateOfDelayList, this)},
         {"traversalPerformance", std::bind(&InventorEx::traversalPerformance, this)},
         {"isDelayRenderNessery", std::bind(&InventorEx::isDelayRenderNessery, this)},
+        {"twoSideLightInDelayRender", std::bind(&InventorEx::twoSideLightInDelayRender, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -2388,7 +2389,7 @@ void InventorEx::twoSideFace()
     m_root->addChild(faceSet);
 
     material->diffuseColor.setValue(1, 0, 0);
-    //material->transparency = 0.8;
+    material->transparency = 0.8;
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 48, faceIndices);
     faceSetInward->coordIndex.setValues(0, 8, faceIndicesInward);
@@ -2614,6 +2615,13 @@ void InventorEx::flat()
 
     coords->point.setValues(0, 8, pts);
     face->coordIndex.setValues(0, 4, faceIndices);
+
+    m_root->renderCaching = SoSeparator::OFF;
+    firstFloor->renderCaching = SoSeparator::OFF;
+    secondFloor->renderCaching = SoSeparator::OFF;
+    redFace->renderCaching = SoSeparator::OFF;
+    greenFace->renderCaching = SoSeparator::OFF;
+
 }
 
 
@@ -3076,5 +3084,47 @@ void InventorEx::isDelayRenderNessery()
 
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 4, faceIndices);
+}
 
+void InventorEx::twoSideLightInDelayRender()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+
+    CREATE_NODE(SoDeferredRender, deferredRender)
+    //CREATE_NODE(SoSeparator, deferredRender)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, deferredRender},
+        {deferredRender, coords},
+        {deferredRender, shapeHints},
+        {deferredRender, faceSet},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 4, faceIndices);
+    deferredRender->renderCaching = SoSeparator::OFF;
+    m_root->renderCaching = SoSeparator::OFF;
 }
