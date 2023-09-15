@@ -70,97 +70,87 @@ SoDeferredRender::GLRender(SoGLRenderAction* action)
     }
 }
 
-//#define USENEWACTION
 // Doc in superclass.
 void
 SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
 {
-#ifdef USENEWACTION
     if (isUsingNewAction)
-    {
-        // 正常渲染
+    {   // 正常渲染
         inherited::GLRenderBelowPath(action);
     }
     else if (action->isRenderingDelayedPaths())
-    {
-        // 从delayedpaths进入
+    {   // 从delayedpaths进入
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
-
-        // 创建并配置新的SoGLRenderAction
-        SoGLRenderAction newAction(action->getViewportRegion());
-        copyGLRenderAction(*action, newAction);
-        SoPath* newPath = action->getCurPath()->copy();
-        newPath->ref();
-        isUsingNewAction = TRUE;
-        newAction.apply(newPath);
-        isUsingNewAction = FALSE;
-        newPath->unref();
+        SoGLRenderAction::TransparencyType transparencyType = action->getTransparencyType();
+        if (transparencyType == SoGLRenderAction::DELAYED_ADD ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_ADD ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_SORTED_TRIANGLE_ADD ||
+            transparencyType == SoGLRenderAction::DELAYED_BLEND ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_BLEND ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_SORTED_TRIANGLE_BLEND ||
+            transparencyType == SoGLRenderAction::SORTED_LAYERS_BLEND)
+        {   // delayed透明模式下的路径使用新action通道
+            SoGLRenderAction newAction(action->getViewportRegion());
+            copyGLRenderAction(*action, newAction);
+            SoPath* newPath = action->getCurPath()->copy();
+            newPath->ref();
+            isUsingNewAction = TRUE;
+            newAction.apply(newPath);
+            isUsingNewAction = FALSE;
+            newPath->unref();
+        }
+        else
+        {
+            inherited::GLRenderBelowPath(action);
+}
     }
     else
     {
         SoCacheElement::invalidate(action->getState());
         action->addDelayedPath(action->getCurPath()->copy());
-
     }
-#else
-    if (action->isRenderingDelayedPaths())
-    {
-        if (clearDepthBuffer.getValue())
-            glClear(GL_DEPTH_BUFFER_BIT);
-        inherited::GLRenderBelowPath(action);
-    }
-    else
-    {
-        SoCacheElement::invalidate(action->getState());
-        action->addDelayedPath(action->getCurPath()->copy());
-    }
-#endif
 }
 
 // Doc in superclass.
 void SoDeferredRender::GLRenderInPath(SoGLRenderAction* action)
 {
-#ifdef USENEWACTION
     if (isUsingNewAction)
-    {
-        // 正常渲染
+    {   // 正常渲染
         inherited::GLRenderInPath(action);
     }
     else if (action->isRenderingDelayedPaths())
-    {
-        // 从delayedpaths进入
+    {   // 从delayedpaths进入
         if (clearDepthBuffer.getValue())
             glClear(GL_DEPTH_BUFFER_BIT);
-
-        // 创建并配置新的SoGLRenderAction
-        SoGLRenderAction newAction(action->getViewportRegion());
-        copyGLRenderAction(*action, newAction);
-        SoPath* newPath = action->getCurPath()->copy();
-        newPath->ref();
-        isUsingNewAction = TRUE;
-        newAction.apply(newPath);
-        isUsingNewAction = FALSE;
-        newPath->unref();
+        SoGLRenderAction::TransparencyType transparencyType = action->getTransparencyType();
+        if (transparencyType == SoGLRenderAction::DELAYED_ADD ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_ADD ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_SORTED_TRIANGLE_ADD ||
+            transparencyType == SoGLRenderAction::DELAYED_BLEND ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_BLEND ||
+            transparencyType == SoGLRenderAction::SORTED_OBJECT_SORTED_TRIANGLE_BLEND ||
+            transparencyType == SoGLRenderAction::SORTED_LAYERS_BLEND)
+        {   // delayed透明模式下的路径使用新action通道
+            SoGLRenderAction newAction(action->getViewportRegion());
+            copyGLRenderAction(*action, newAction);
+            SoPath* newPath = action->getCurPath()->copy();
+            newPath->ref();
+            isUsingNewAction = TRUE;
+            newAction.apply(newPath);
+            isUsingNewAction = FALSE;
+            newPath->unref();
+        }
+        else
+        {
+            inherited::GLRenderInPath(action);
+        }
     }
     else
     {
         SoCacheElement::invalidate(action->getState());
         action->addDelayedPath(action->getCurPath()->copy());
     }
-#else
-    if (action->isRenderingDelayedPaths())
-    {
-        if (clearDepthBuffer.getValue())
-            glClear(GL_DEPTH_BUFFER_BIT);
-        inherited::GLRenderInPath(action);
-    }
-    else
-    {
-        SoCacheElement::invalidate(action->getState());
-        action->addDelayedPath(action->getCurPath()->copy());
-    }
-#endif
 }
 
 // Doc in superclass.
