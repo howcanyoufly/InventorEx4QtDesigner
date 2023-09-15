@@ -14,7 +14,6 @@
 #include <GL/gl.h>
 #endif // __APPLE__
 #include "utils.h"
-#include <Inventor/elements/SoGLLazyElement.h>
 
 SO_NODE_SOURCE(SoDeferredRender);
 
@@ -103,7 +102,7 @@ SoDeferredRender::GLRenderBelowPath(SoGLRenderAction* action)
         else
         {
             inherited::GLRenderBelowPath(action);
-}
+        }
     }
     else
     {

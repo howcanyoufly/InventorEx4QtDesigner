@@ -120,6 +120,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"traversalPerformance", std::bind(&InventorEx::traversalPerformance, this)},
         {"isDelayRenderNessery", std::bind(&InventorEx::isDelayRenderNessery, this)},
         {"twoSideLightInDelayRender", std::bind(&InventorEx::twoSideLightInDelayRender, this)},
+        {"gnomon", std::bind(&InventorEx::gnomon, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -1195,7 +1196,7 @@ void callbackRoutine(void*, SoAction* action)
     glColor3f(0.0f, 0.7f, 0.0f);
     glLineWidth(2);
     glDisable(GL_LIGHTING);  // so we don't have to set normals
-    //drawFloor();
+    drawFloor();
     drawAxisCross();
     glEnable(GL_LIGHTING);
     glLineWidth(1);
@@ -1221,9 +1222,9 @@ void callbackRoutine(void*, SoAction* action)
     如果在使用新颜色更新SoLazyElement之后创建此实例，则在调用SoMaterialBundle::sendFirst()时，新颜色将被发送到OpenGL。
     这次调用还会更新所有其他懒惰的OpenGL状态。
     实际上，创建形状节点时，必须使用SoMaterialBundle::sendFirst()或调用SoGLLazyElement::send(state, SoLazyElement::ALL_MASK)。
-    如果你决定使用glColor*()将颜色发送到OpenGL，你应该通过调用SoGLLazyElement::reset(state, SoLazyElement::DIFFUSE_MASK)通知SoGLLazyElement。
-    这将通知SoGLLazyElement当前的OpenGL散射颜色未知。
     */
+    // 如果你决定使用glColor*()将颜色发送到OpenGL，你应该通过调用SoGLLazyElement::reset(state, SoLazyElement::DIFFUSE_MASK)通知SoGLLazyElement。
+    // 这将通知SoGLLazyElement当前的OpenGL散射颜色未知。
     SoState* state = action->getState();
     SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
     lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
@@ -2158,6 +2159,7 @@ void InventorEx::pointInCube()
     lightModel->model = (SoLightModel::Model)model;
 }
 
+// tode: 添加反向矩阵
 void InventorEx::showRotationCenter()
 {
     CREATE_NODE(SoSeparator, separator)
@@ -2171,7 +2173,7 @@ void InventorEx::showRotationCenter()
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
-        //{m_root, cube},
+        {m_root, cube},
         {m_root, separator},
         {separator, depthBuffer},
         {separator, lightModel},
@@ -2197,10 +2199,6 @@ void InventorEx::showRotationCenter()
     material->emissiveColor = SbColor(1, 0, 0);
     material->transparency = 0.8;
     depthBuffer->function = SoDepthBuffer::ALWAYS;
-    std::cout << "0 for Base_Color\n1 for Phong" << std::endl;
-    int model;
-    std::cin >> model;
-    lightModel->model = (SoLightModel::Model)model;
 }
 
 
@@ -2323,7 +2321,9 @@ void InventorEx::previewPointForward()
     case 3:
         m_root->addChild(cube);
         m_root->addChild(separator);
-        material->diffuseColor.setValue(1.0, 0.0, 0.0);
+        //material->diffuseColor.setValue(1.0, 0.0, 0.0);
+        material->emissiveColor = SbColor(1, 0, 0);
+        material->transparency = 0.8;
         separator->addChild(material);
         separator->addChild(shapeHints);
         separator->addChild(depthBuffer);
@@ -2609,21 +2609,13 @@ void InventorEx::flat()
     secondFloorMaterial->diffuseColor.setValue(0, 0, 1);
     secondFloorMaterial->transparency.setValue(0.8);
 
-    redTranslation->translation.setValue(0, 0, 0.4);
-    greenTranslation->translation.setValue(0, 0, 0.2);
+    redTranslation->translation.setValue(0, 0, 0.2);
+    greenTranslation->translation.setValue(0, 0, 0.4);
     secondFloorTranslation->translation.setValue(0, 0, 0.6);
 
     coords->point.setValues(0, 8, pts);
     face->coordIndex.setValues(0, 4, faceIndices);
-
-    m_root->renderCaching = SoSeparator::OFF;
-    firstFloor->renderCaching = SoSeparator::OFF;
-    secondFloor->renderCaching = SoSeparator::OFF;
-    redFace->renderCaching = SoSeparator::OFF;
-    greenFace->renderCaching = SoSeparator::OFF;
-
 }
-
 
 void actionSwitchTo(void* userdata, SoAction* action)
 {
@@ -2732,6 +2724,7 @@ static void renderAuxViewport(void* userdata, SoAction* action)
     lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
 }
 
+// 参考SoViewport
 void InventorEx::auxViewport()// Not implemented yet
 {
     SoSphere* sphere = new SoSphere; // 一个简单的球体
@@ -3103,7 +3096,6 @@ void InventorEx::twoSideLightInDelayRender()
     };
 
     CREATE_NODE(SoDeferredRender, deferredRender)
-    //CREATE_NODE(SoSeparator, deferredRender)
     CREATE_NODE(SoCoordinate3, coords)
     CREATE_NODE(SoShapeHints, shapeHints)
     CREATE_NODE(SoIndexedFaceSet, faceSet)
@@ -3125,6 +3117,85 @@ void InventorEx::twoSideLightInDelayRender()
 
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 4, faceIndices);
+
     deferredRender->renderCaching = SoSeparator::OFF;
     m_root->renderCaching = SoSeparator::OFF;
+}
+
+const char* gnomonGeometry = "\
+#Inventor V2.1 ascii\n\
+\
+DEF GnomonGeom Separator { \
+  PickStyle { style UNPICKABLE } \
+  DrawStyle { style FILLED } \
+  LightModel { model PHONG } \
+  MaterialBinding { value OVERALL } \
+  Complexity { value .2 } \
+  ShapeHints { vertexOrdering COUNTERCLOCKWISE shapeType SOLID } \
+  Font { name \"Arial : Bold\" size 15 } \
+  Separator { \
+    Material { \
+      diffuseColor    [ 0.5 0 0 ] \
+      emissiveColor   [ 0.5 0 0 ] \
+    } \
+    RotationXYZ { axis Z angle -1.570796327 } \
+    Cylinder { height 2 radius .06 } \
+    Translation { translation 0 1 0 } \
+    Cone { bottomRadius .18 height .3 } \
+    Translation { translation 0 .16 0 } \
+    Text2 { string \"X\" } \
+  } \
+  Separator { \
+    Material { \
+      diffuseColor    [ 0 0.5 0 ] \
+      emissiveColor   [ 0 0.5 0 ] \
+    } \
+    Cylinder { height 2 radius .06 } \
+    Translation { translation 0 1 0 } \
+    Cone { bottomRadius .18 height .3 } \
+    Translation { translation 0 .16 0 } \
+    Text2 { string \"Y\" } \
+  } \
+  Material { \
+    diffuseColor    [ 0 0 0.5 ] \
+    emissiveColor   [ 0 0 0.5 ] \
+  } \
+  RotationXYZ { axis X angle 1.570796327 } \
+  Cylinder { height 2 radius .06 } \
+  Translation { translation 0 1 0 } \
+  Cone { bottomRadius .18 height .3 } \
+  Translation { translation 0 .16 0 } \
+  Text2 { string \"Z\" } \
+} ";
+
+SoSeparator* makeGnomon()
+{
+    SoSeparator* pRoot = new SoSeparator(1);
+    SoSwitch* pSwitch = new SoSwitch(2);
+    SoCallback* pCallb = new SoCallback;
+    SoPerspectiveCamera* pCam = new SoPerspectiveCamera;
+    pRoot->ref();
+    pRoot->setName("Gnomon");
+
+    // Switch node will allow us turn the gnomon on and off
+    pSwitch->setName("GnomonSwitch");
+    pRoot->addChild(pSwitch);
+
+
+    SoInput in;
+    in.setBuffer((void*)gnomonGeometry, (size_t)strlen(gnomonGeometry));
+    SoNode* node;
+    SbBool ok = SoDB::read(&in, node);
+    if (ok && node != NULL) {
+        pSwitch->addChild(node);
+        pSwitch->whichChild = SO_SWITCH_ALL;
+    }
+
+    pRoot->unrefNoDelete();
+    return pRoot;
+}
+
+void InventorEx::gnomon()
+{
+    m_root->addChild(makeGnomon());
 }

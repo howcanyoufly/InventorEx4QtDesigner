@@ -98,6 +98,9 @@ private:
     void isDelayRenderNessery();
     void twoSideLightInDelayRender();
 
+    // about gnomon
+    void gnomon();
+
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
