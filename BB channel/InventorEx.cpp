@@ -121,6 +121,9 @@ InventorEx::InventorEx(int argc, char** argv)
         {"isDelayRenderNessery", std::bind(&InventorEx::isDelayRenderNessery, this)},
         {"twoSideLightInDelayRender", std::bind(&InventorEx::twoSideLightInDelayRender, this)},
         {"gnomon", std::bind(&InventorEx::gnomon, this)},
+        {"depthRange", std::bind(&InventorEx::depthRange, this)},
+        {"clearDepthBuffer", std::bind(&InventorEx::clearDepthBuffer, this)},
+        {"depthConflict", std::bind(&InventorEx::depthConflict, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -3198,4 +3201,221 @@ SoSeparator* makeGnomon()
 void InventorEx::gnomon()
 {
     m_root->addChild(makeGnomon());
+}
+
+void InventorEx::depthRange()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoSeparator, firstFloor)
+    CREATE_NODE(SoSeparator, secondFloor)
+    CREATE_NODE(SoSeparator, redFace)
+    CREATE_NODE(SoSeparator, greenFace)
+    CREATE_NODE(SoMaterial, redMaterial)
+    CREATE_NODE(SoMaterial, greenMaterial)
+    CREATE_NODE(SoMaterial, secondFloorMaterial)
+    CREATE_NODE(SoTranslation, redTranslation)
+    CREATE_NODE(SoTranslation, greenTranslation)
+    CREATE_NODE(SoTranslation, secondFloorTranslation)
+    CREATE_NODE(SoDepthBuffer, groudFloorDepthBuffer);
+    CREATE_NODE(SoDepthBuffer, firstFloorDepthBuffer);
+    CREATE_NODE(SoDepthBuffer, secondFloorDepthBuffer);
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoIndexedFaceSet, face)
+    CREATE_NODE(SoCube, cube)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, coords},
+        {m_root, shapeHints},
+        {m_root, groudFloorDepthBuffer},
+        {m_root, face},
+        {m_root, firstFloor},
+        {m_root, secondFloor},
+        {firstFloor, firstFloorDepthBuffer},
+        {firstFloor, redFace},
+        {firstFloor, greenFace},
+        {redFace, redMaterial},
+        {redFace, redTranslation},
+        {redFace, face},
+        {greenFace, greenMaterial},
+        {greenFace, greenTranslation},
+        {greenFace, face},
+        {secondFloor, secondFloorDepthBuffer},
+        {secondFloor, secondFloorMaterial},
+        {secondFloor, secondFloorTranslation},
+        {secondFloor, face},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    redMaterial->diffuseColor.setValue(1, 0, 0);
+    redMaterial->transparency.setValue(0.8);
+    greenMaterial->diffuseColor.setValue(0, 1, 0);
+    greenMaterial->transparency.setValue(0.8);
+    secondFloorMaterial->diffuseColor.setValue(0, 0, 1);
+    secondFloorMaterial->transparency.setValue(0.8);
+
+    redTranslation->translation.setValue(0, 0, 0.2);
+    greenTranslation->translation.setValue(0, 0, 0.4);
+    secondFloorTranslation->translation.setValue(0, 0, 0.6);
+
+    groudFloorDepthBuffer->range.setValue(0.1, 1.0);
+    firstFloorDepthBuffer->range.setValue(0.05, 0.1);
+    secondFloorDepthBuffer->range.setValue(0, 0.05);
+
+    coords->point.setValues(0, 8, pts);
+    face->coordIndex.setValues(0, 4, faceIndices);
+}
+
+#define CLEARTIMES 1E+3
+void clearDepthBufferManyTimes(void* userdata, SoAction* action)
+{
+    if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
+        return;
+
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < CLEARTIMES; ++i)
+    {
+        glClear(GL_DEPTH_BUFFER_BIT);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Done in " << duration.count() << " seconds" << std::endl;
+}
+
+void InventorEx::clearDepthBuffer()
+{
+    wireframe();
+    SoCallback* cb = new SoCallback;
+    // glClear耗时与view中形体个数无关
+    cb->setCallback(clearDepthBufferManyTimes);
+    m_root->addChild(cb);
+}
+
+void InventorEx::depthConflict()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[8] = {
+        4, 5, 6, SO_END_FACE_INDEX
+    };
+
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoSeparator, firstFloor)
+    CREATE_NODE(SoSeparator, secondFloor)
+    CREATE_NODE(SoSeparator, redFace)
+    CREATE_NODE(SoSeparator, greenFace)
+    CREATE_NODE(SoMaterial, redMaterial)
+    CREATE_NODE(SoMaterial, greenMaterial)
+    CREATE_NODE(SoMaterial, secondFloorMaterial)
+    CREATE_NODE(SoTranslation, redTranslation)
+    CREATE_NODE(SoTranslation, greenTranslation)
+    CREATE_NODE(SoTranslation, secondFloorTranslation)
+    CREATE_NODE(SoDepthBuffer, groudFloorDepthBuffer);
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoIndexedFaceSet, face)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, coords},
+        {m_root, shapeHints},
+        {m_root, groudFloorDepthBuffer},
+        {m_root, face},
+        {m_root, firstFloor},
+        {m_root, secondFloor},
+        {firstFloor, redFace},
+        {firstFloor, greenFace},
+        {redFace, redMaterial},
+        {redFace, redTranslation},
+        {redFace, face},
+        {greenFace, greenMaterial},
+        {greenFace, greenTranslation},
+        {greenFace, face},
+        {secondFloor, secondFloorMaterial},
+        {secondFloor, secondFloorTranslation},
+        {secondFloor, face},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    redMaterial->diffuseColor.setValue(1, 0, 0);
+    greenMaterial->diffuseColor.setValue(0, 1, 0);
+    secondFloorMaterial->diffuseColor.setValue(0, 0, 1);
+
+    redTranslation->translation.setValue(0, 0, 0.000001);// 0.000001
+    greenTranslation->translation.setValue(0, 0, 0.000002);
+    secondFloorTranslation->translation.setValue(0, 0, 0.000003);
+
+    bool useRange = false;
+    std::cout << "useRange: " << std::endl;
+    std::cin >> useRange;
+    if (useRange)
+        groudFloorDepthBuffer->range.setValue(0.99, 1.0);
+
+    coords->point.setValues(0, 8, pts);
+    face->coordIndex.setValues(0, 4, faceIndices);
+}
+
+void InventorEx::modelView()
+{
+    CREATE_NODE(SoSeparator, foregroundRoot);
+    CREATE_NODE(SoSeparator, backgroundRoot);
+    CREATE_NODE(SoSeparator, modelSpace);
+    CREATE_NODE(SoSeparator, overlayLayer);
+    CREATE_NODE(SoDeferredRender, wcsAxis);
+    CREATE_NODE(SoDeferredRender, directionSelectionAxis);
+    CREATE_NODE(SoDeferredRender, rotationCenterPoint);
+    CREATE_NODE(SoDeferredRender, previewPointsAndAxes);
+    CREATE_NODE(SoDeferredRender, fixedCoordinateAxis);
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, foregroundRoot},
+        {m_root, backgroundRoot},
+        {m_root, modelSpace},
+        {m_root, overlayLayer},
+        {overlayLayer, wcsAxis},
+        {overlayLayer, directionSelectionAxis},
+        {overlayLayer, rotationCenterPoint},
+        {overlayLayer, previewPointsAndAxes},
+        {overlayLayer, fixedCoordinateAxis},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+
 }

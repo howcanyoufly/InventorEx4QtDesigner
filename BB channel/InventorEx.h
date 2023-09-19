@@ -101,6 +101,11 @@ private:
     // about gnomon
     void gnomon();
 
+    void depthRange();
+    void clearDepthBuffer();
+    void depthConflict();
+    void modelView();
+
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
