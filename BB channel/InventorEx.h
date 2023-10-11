@@ -106,6 +106,11 @@ private:
     void depthConflict();
     void modelView();
 
+    void twoSideDiscover();
+    void oneSideCorrect();
+    void glTwoSide();
+
+    void replaceGroup();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 

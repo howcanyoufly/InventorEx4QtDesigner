@@ -124,6 +124,10 @@ InventorEx::InventorEx(int argc, char** argv)
         {"depthRange", std::bind(&InventorEx::depthRange, this)},
         {"clearDepthBuffer", std::bind(&InventorEx::clearDepthBuffer, this)},
         {"depthConflict", std::bind(&InventorEx::depthConflict, this)},
+        {"modelView", std::bind(&InventorEx::modelView, this)},
+        {"twoSideDiscover", std::bind(&InventorEx::twoSideDiscover, this)},
+        {"oneSideCorrect", std::bind(&InventorEx::oneSideCorrect, this)},
+        {"glTwoSide", std::bind(&InventorEx::glTwoSide, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -2278,6 +2282,7 @@ void InventorEx::previewPointForward()
     CREATE_NODE(SoAnnotation, annotation)
     CREATE_NODE(SoComplexity, complexity)
     CREATE_NODE(SoDepthBuffer, depthBuffer)
+    CREATE_NODE(SoDepthBuffer, depthBufferOver)
     CREATE_NODE(SoShapeHints, shapeHints)
     CREATE_NODE(SoDeferredRender, defferedRender)
 
@@ -2285,7 +2290,7 @@ void InventorEx::previewPointForward()
     int method = 0;
     float factor = 0.0f;
     float units = 0.0f;
-    std::cout << "0 for cleanDepthBuffer  1 for polygonOffset  2 for Annotation  3 for Two-sided Lighting  4 for Deffed Render" << std::endl;
+    std::cout << "0 for cleanDepthBuffer  1 for depthRange  2 for Annotation  3 for Two-sided Lighting  4 for Deffed Render" << std::endl;
     std::cin >> method;
     switch (method)
     {
@@ -2299,20 +2304,16 @@ void InventorEx::previewPointForward()
         cleanDepthBuffCB->setCallback(glClearDepthBuffer);
     	break;
     case 1:
+        m_root->addChild(depthBuffer);
         m_root->addChild(cube);
         m_root->addChild(separator);
         material->diffuseColor.setValue(1.0, 0.0, 0.0);
         separator->addChild(material);
-        separator->addChild(polygonOffset);
+        separator->addChild(depthBufferOver);
         separator->addChild(point);
-        std::cout << "factor: " << std::endl;
-        std::cin >> factor;
-        std::cout << "units(recommend about \n-10000000): " << std::endl;
-        std::cin >> units;
-        polygonOffset->factor = factor;
-        polygonOffset->units = units;
-        polygonOffset->styles = SoPolygonOffset::FILLED;
-    	break;
+        depthBuffer->range.setValue(0.1, 1.0);
+        depthBufferOver->range.setValue(0, 0.1);
+        break;
     case 2:
         m_root->addChild(cube);
         m_root->addChild(annotation);
@@ -3388,34 +3389,305 @@ void InventorEx::depthConflict()
     face->coordIndex.setValues(0, 4, faceIndices);
 }
 
+SoDeferredRender* createWcsAxis()
+{
+    const char* wcsAxisGeo = R"(
+#Inventor V2.1 ascii
+
+DEF AxisGeo Separator {
+  DrawStyle { style FILLED }
+  LightModel { model PHONG }
+  MaterialBinding { value OVERALL }
+  Complexity { value .2 }
+  ShapeHints { vertexOrdering COUNTERCLOCKWISE shapeType SOLID }
+
+  Separator {
+    Material { 
+      diffuseColor [0.5 0.125 0.125] 
+      emissiveColor [0.5 0.125 0.125] 
+    }
+    Cylinder { height 1 radius .02 }
+    Translation { translation 0 0.5 0 }
+    Separator {  # Arrowhead for X-axis
+      Cone { bottomRadius 0.125 height 0.3333 }
+      Translation { translation 0 0.3333 0 }
+      IndexedFaceSet {
+          vertexProperty DEF vProp VertexProperty {
+              vertex [
+                  0 0.25 0,
+                  0 0 0.25,
+                  0 -0.25 0,
+                  0 0 -0.25
+              ]
+          }
+          coordIndex [
+              0, 1, 2, 3, -1
+          ]
+      }
+    }
+    Translation { translation 0 0.5 0 }
+    Text2 { string "X" }
+  }
+
+  Separator {
+    Material { 
+      diffuseColor [0.125 0.5 0.125] 
+      emissiveColor [0.125 0.5 0.125] 
+    }
+    RotationXYZ { axis Z angle -1.570796327 }
+    Cylinder { height 1 radius .02 }
+    Translation { translation 0 0.5 0 }
+    Separator {  # Arrowhead for Y-axis
+      Cone { bottomRadius 0.125 height 0.3333 }
+      Translation { translation 0 0.3333 0 }
+      IndexedFaceSet {
+        vertexProperty USE vProp
+        coordIndex [
+          0, 1, 2, 3, -1
+        ]
+      }
+    }
+    Translation { translation 0 0.5 0 }
+    Text2 { string "Y" }
+  }
+
+  Separator {
+    Material { 
+      diffuseColor [0.125 0.125 0.5] 
+      emissiveColor [0.125 0.125 0.5] 
+    }
+    RotationXYZ { axis X angle 1.570796327 }
+    Cylinder { height 1 radius .02 }
+    Translation { translation 0 0.5 0 }
+    Separator {  # Arrowhead for Z-axis
+      Cone { bottomRadius 0.125 height 0.3333 }
+      Translation { translation 0 0.3333 0 }
+      IndexedFaceSet {
+        vertexProperty USE vProp
+        coordIndex [
+          0, 1, 2, 3, -1
+        ]
+      }
+    }
+    Translation { translation 0 0.5 0 }
+    Text2 { string "Z" }
+  }
+}
+)";
+
+    SoDeferredRender* pDeferredRender = new SoDeferredRender(true);
+    pDeferredRender->ref();
+
+    SoInput in;
+    in.setBuffer((void*)wcsAxisGeo, (size_t)strlen(wcsAxisGeo));
+    SoNode* pNode = NULL;
+    if (SoDB::read(&in, pNode) && pNode)
+    {
+        pDeferredRender->addChild(pNode);
+    }
+
+    pDeferredRender->unrefNoDelete();
+    return pDeferredRender;
+}
+
+SoDeferredRender* directionSelectionAxis()
+{
+    return NULL;
+
+}
+
+SoDeferredRender* rotationCenterPoint()
+{
+    return NULL;
+}
+
+SoDeferredRender* previewPointsAndAxes()
+{
+    return NULL;
+}
+
+SoDeferredRender* naviCube()
+{
+    return NULL;
+}
+
 void InventorEx::modelView()
 {
-    CREATE_NODE(SoSeparator, foregroundRoot);
     CREATE_NODE(SoSeparator, backgroundRoot);
     CREATE_NODE(SoSeparator, modelSpace);
-    CREATE_NODE(SoSeparator, overlayLayer);
-    CREATE_NODE(SoDeferredRender, wcsAxis);
-    CREATE_NODE(SoDeferredRender, directionSelectionAxis);
-    CREATE_NODE(SoDeferredRender, rotationCenterPoint);
-    CREATE_NODE(SoDeferredRender, previewPointsAndAxes);
-    CREATE_NODE(SoDeferredRender, fixedCoordinateAxis);
+    CREATE_NODE(SoSeparator, overlay);
+    CREATE_NODE(SoSwitch, wcsAxis);
+    CREATE_NODE(SoSwitch, directionSelectionAxis);
+    CREATE_NODE(SoSwitch, rotationCenterPoint);
+    CREATE_NODE(SoSwitch, previewPointsAndAxes);
+    CREATE_NODE(SoSwitch, naviCube);
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
-        {m_root, foregroundRoot},
         {m_root, backgroundRoot},
-        {m_root, modelSpace},
-        {m_root, overlayLayer},
-        {overlayLayer, wcsAxis},
-        {overlayLayer, directionSelectionAxis},
-        {overlayLayer, rotationCenterPoint},
-        {overlayLayer, previewPointsAndAxes},
-        {overlayLayer, fixedCoordinateAxis},
+        {m_root, overlay},
+        {overlay, wcsAxis},
+        {overlay, directionSelectionAxis},
+        {overlay, rotationCenterPoint},
+        {overlay, previewPointsAndAxes},
+        {overlay, naviCube},
+        {backgroundRoot, new SoGradientBackground},
+        {wcsAxis, createWcsAxis()}
+
     };
     for (const auto& relationship : relationships)
     {
         ADD_CHILD(relationship.first, relationship.second);
     }
 
+    wcsAxis->whichChild = 0;
 
+    wireframe();
+}
+
+void glTwoSideLight(void* userdata, SoAction* action)
+{
+    if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+    {
+        glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
+    }
+}
+
+void InventorEx::twoSideDiscover()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        4, 5, 6, SO_END_FACE_INDEX,
+    };
+    float norms[8][3] = {
+        {0.0, 0.0, -1.0},
+        {0.0, 0.0, -1.0},
+        {0.0, 0.0, -1.0},
+        {0.0, 0.0, -1.0},
+        {0.0, 0.0, 1.0},
+        {0.0, 0.0, 1.0},
+        {0.0, 0.0, 1.0},
+        {0.0, 0.0, 1.0},
+    };
+    SoLightModel* lightModel = new SoLightModel;
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoMaterial* material = new SoMaterial;
+    SoShapeHints* shapeHints = new SoShapeHints;
+    SoCallback* cb = new SoCallback;
+    SoNormal* normals = new SoNormal;
+    normals->vector.setValues(0, 8, norms);
+    SoNormalBinding* normalBinding = new SoNormalBinding;
+    normalBinding->value = SoNormalBinding::PER_VERTEX;
+
+    //m_root->addChild(lightModel);
+    m_root->addChild(cb);
+    //m_root->addChild(shapeHints);
+    m_root->addChild(material);
+    m_root->addChild(coords);
+    m_root->addChild(normals);
+    m_root->addChild(normalBinding);
+    m_root->addChild(faceSet);
+
+    m_root->renderCaching = SoSeparator::OFF;
+
+    material->diffuseColor.setValue(1, 0, 0);
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->creaseAngle = 0.0;
+
+    cb->setCallback(glTwoSideLight);
+
+    lightModel->model = SoLightModel::BASE_COLOR;
+
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 8, faceIndices);
+}
+
+void InventorEx::oneSideCorrect()
+{
+    float pts[3][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 1, 2, SO_END_FACE_INDEX,
+    };
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoMaterial* material = new SoMaterial;
+    SoShapeHints* shapeHints = new SoShapeHints;
+
+    m_root->addChild(material);
+    m_root->addChild(shapeHints);
+    m_root->addChild(coords);
+    m_root->addChild(faceSet);
+
+    material->diffuseColor.setValue(1, 0, 0);
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    coords->point.setValues(0, 3, pts);
+    faceSet->coordIndex.setValues(0, 4, faceIndices);
+}
+
+void glTwoSideFace(void*, SoAction* action)
+{
+    if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+    {
+        // 允许自定义 OpenGL 代码与 Coin3D 共存
+        glPushAttrib(GL_ALL_ATTRIB_BITS);
+
+        // 设置双面光照
+        glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
+
+        glBegin(GL_TRIANGLES);
+        glNormal3f(0.0f, 0.0f, -1.0f);
+        glVertex3f(0.0f, 0.0f, 0.0f);
+        glVertex3f(1.0f, 0.0f, 0.0f);
+        glVertex3f(1.0f, 1.0f, 0.0f);
+
+        glNormal3f(0.0f, 0.0f, 1.0f);
+        glVertex3f(0.0f, 0.0f, 1.0f);
+        glVertex3f(1.0f, 0.0f, 1.0f);
+        glVertex3f(1.0f, 1.0f, 1.0f);
+        glEnd();
+
+        // 恢复 Coin3D 的 OpenGL 状态
+        glPopAttrib();
+    }
+}
+
+void InventorEx::glTwoSide() 
+{
+    SoCallback* cb = new SoCallback;
+    cb->setCallback(glTwoSideFace);
+    m_root->addChild(cb);
+
+}
+
+void InventorEx::replaceGroup()
+{
+    SoSeparator* pGroup = new SoSeparator;
+    SoMaterial* mat = new SoMaterial;
+    mat->diffuseColor.setValue(1, 0, 0);
+    SoMaterial* mat = new SoMaterial;
+    mat->diffuseColor.setValue(1, 0, 0);
+
+    pGroup->addChild(mat);
+    m_root->addChild(pGroup);
 }
