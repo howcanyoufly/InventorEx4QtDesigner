@@ -128,6 +128,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"twoSideDiscover", std::bind(&InventorEx::twoSideDiscover, this)},
         {"oneSideCorrect", std::bind(&InventorEx::oneSideCorrect, this)},
         {"glTwoSide", std::bind(&InventorEx::glTwoSide, this)},
+        {"staticWireframe", std::bind(&InventorEx::staticWireframe, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -1717,7 +1718,7 @@ std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids
 }
 
 #define CUBECOUNT 20
-#define  USEDELAYRENDER
+//#define  USEDELAYRENDER
 #ifdef USEDELAYRENDER
 /*
 About polygonOffset:
@@ -1774,12 +1775,15 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoSeparator, wireframeWithoutHidden)
     CREATE_NODE(SoPolygonOffset, polygonOffset)
     CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoMaterial, faceMaterial)
     CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoIndexedFaceSet, faceSet)
     CREATE_NODE(SoDeferredRender, lineRoot)
     CREATE_NODE(SoSeparator, lineVisibleRoot)
+    CREATE_NODE(SoMaterial, lineVisibleMaterial)
     CREATE_NODE(SoSwitch, lineHiddenSwitch)
     CREATE_NODE(SoSeparator, lineHiddenRoot)
+    CREATE_NODE(SoMaterial, lineHiddenMaterial)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoSwitch, wireStyleSwitch)
     CREATE_NODE(SoDrawStyle, dashedLinestyle)
@@ -1803,12 +1807,16 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {staticWireframe, polygonOffset},
         {staticWireframe, faceRoot},
         {staticWireframe, lineRoot},
+        {faceRoot, faceMaterial},
         {faceRoot, colorMask},
         {faceRoot, faceSet},
         {lineRoot, lineVisibleRoot},
         {lineRoot, lineHiddenSwitch},
+        {lineVisibleRoot, lineVisibleMaterial},
         {lineVisibleRoot, lineSet},
         {lineHiddenSwitch, lineHiddenRoot},
+        {lineHiddenRoot, colorMask},
+        {lineHiddenRoot, lineHiddenMaterial},
         {lineHiddenRoot, depthbuffer},
         {lineHiddenRoot, wireStyleSwitch},
         {wireStyleSwitch, dashedLinestyle},
@@ -1823,6 +1831,9 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     bodySwitch->whichChild = 0;
     trasparencyTypeSwitch->whichChild = 0;
     renderModeSwitch->whichChild = 3;
+
+    //faceMaterial->transparency = 1.0;
+    lineVisibleMaterial->diffuseColor.setValue(1.0, 0.0, 0.0);
 
     colorMask->red = FALSE;
     colorMask->green = FALSE;
@@ -1875,7 +1886,7 @@ void InventorEx::wireframe()
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
-        {m_root, new SoGradientBackground},
+        //{m_root, new SoGradientBackground},
         {m_root, bodies},
     };
     for (const auto& relationship : relationships)
@@ -1970,8 +1981,10 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     CREATE_NODE(SoIndexedFaceSet, faceSet)
     CREATE_NODE(SoSeparator, lineRoot)
     CREATE_NODE(SoSeparator, lineVisibleRoot)
+    CREATE_NODE(SoMaterial, lineVisibleMaterial)
     CREATE_NODE(SoSwitch, lineHiddenSwitch)
     CREATE_NODE(SoSeparator, lineHiddenRoot)
+    CREATE_NODE(SoColorMask, colorMask)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoSwitch, wireStyleSwitch)
     CREATE_NODE(SoDrawStyle, dashedLinestyle)
@@ -2004,8 +2017,10 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {materialSwitch, transparentMaterial},
         {lineRoot, lineVisibleRoot},
         {lineRoot, lineHiddenSwitch},
+        {lineVisibleRoot, lineVisibleMaterial},
         {lineVisibleRoot, lineSet},
         {lineHiddenSwitch, lineHiddenRoot},
+        {lineHiddenRoot, colorMask},
         {lineHiddenRoot, depthbuffer},
         {lineHiddenRoot, wireStyleSwitch},
         {wireStyleSwitch, dashedLinestyle},
@@ -2021,6 +2036,12 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
     trasparencyTypeSwitch->whichChild = 0;
     renderModeSwitch->whichChild = 3;
     frameSwitch->whichChild = 0;// for adaptive view
+
+    lineVisibleMaterial->diffuseColor.setValue(1.0, 0.0, 0.0);
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
 
     depthbuffer->function = SoDepthBuffer::NOTEQUAL;// 仅绘制隐藏片段
 
@@ -2066,7 +2087,7 @@ void InventorEx::wireframe()
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
-        {m_root, new SoGradientBackground},
+        //{m_root, new SoGradientBackground},
         {m_root, firstPassSeparator},
         {m_root, secondPassSeparator},
         {firstPassSeparator, colorMask},
@@ -3685,9 +3706,86 @@ void InventorEx::replaceGroup()
     SoSeparator* pGroup = new SoSeparator;
     SoMaterial* mat = new SoMaterial;
     mat->diffuseColor.setValue(1, 0, 0);
-    SoMaterial* mat = new SoMaterial;
-    mat->diffuseColor.setValue(1, 0, 0);
 
     pGroup->addChild(mat);
     m_root->addChild(pGroup);
+}
+
+void InventorEx::staticWireframe()
+{
+    float pts[8][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+        { 0.0, 0.0, 1.0 },
+        { 1.0, 0.0, 1.0 },
+        { 1.0, 1.0, 1.0 },
+        { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
+    };
+    int32_t lineIndices[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    CREATE_NODE(SoSeparator, m_root)
+    CREATE_NODE(SoSeparator, staticWireframe)
+    CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoSeparator, lineRoot)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoTransparencyType, transType)
+    CREATE_NODE(SoDrawStyle, faceDrawStyle)
+    CREATE_NODE(SoDrawStyle, lineDrawStyle)
+    CREATE_NODE(SoMaterial, faceMaterial)
+    CREATE_NODE(SoMaterial, lineMaterial)
+    CREATE_NODE(SoIndexedFaceSet, faces)
+    CREATE_NODE(SoIndexedLineSet, lines)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
+
+        // 添加子节点
+    m_root->addChild(transType);
+    m_root->addChild(coords);
+    m_root->addChild(staticWireframe);
+
+    staticWireframe->addChild(polygonOffset);
+    staticWireframe->addChild(faceRoot);
+    staticWireframe->addChild(lineRoot);
+
+    faceRoot->addChild(faceDrawStyle);
+    faceRoot->addChild(faceMaterial);
+    faceRoot->addChild(faces);
+
+    lineRoot->addChild(lineDrawStyle);
+    lineRoot->addChild(lineMaterial);
+    lineRoot->addChild(lines);
+
+    // 设置属性
+    transType->value = SoTransparencyType::NONE;
+    coords->point.setValues(0, 8, pts);
+
+    faceDrawStyle->style = SoDrawStyle::FILLED;
+    faceMaterial->transparency = 1.0f;
+    faces->coordIndex.setValues(0, 48, faceIndices);
+
+    lineDrawStyle->style = SoDrawStyle::LINES;
+    lineMaterial->diffuseColor.setValue(51.0f / 255.0f, 51.0f / 255.0f, 51.0f / 255.0f);
+    lines->coordIndex.setValues(0, 24, lineIndices);
 }

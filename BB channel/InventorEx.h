@@ -111,6 +111,7 @@ private:
     void glTwoSide();
 
     void replaceGroup();
+    void staticWireframe();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 

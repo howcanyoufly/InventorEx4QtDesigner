@@ -1,0 +1,46 @@
+Switch
+│
+└── Separator
+    ├── Scale
+    ├── Switch
+    │   └── TransparencyType // NONE
+    └── Separator
+        ├── Coordinate3
+        └── Switch
+            └── Separator // staticWireframe
+                ├── Material
+                ├── PolygonOffset
+                ├── Separator // faceRoot
+                │   ├── DrawStyle // FILLED
+                │   ├── Normal
+                │   ├── NormalBinding
+                │   ├── Switch
+                │   │   └── ColorMask
+                │   ├── Switch
+                │   └── SoBrepFaceSet
+                ├── Separator // pointsRoot
+                │   ├── DrawStyle
+                │   └── SoBrepPointSet
+                └── DeferredRender// edges
+                    ├── Separator // lineVisibleRoot
+                    │   ├── Switch
+                    │   ├── Switch
+                    │   │   └── Group
+                    │   │       ├── Material
+                    │   │       └── DrawStyle
+                    │   ├── Separator // [*]lineRoot
+                    │   │   ├── DrawStyle
+                    │   │   └── SoBrepLineSet
+                    │   └── Separator // [*]silhouetteLineRoot
+                    │       ├── DrawStyle
+                    │       └── SoBrepLineSet
+                    └── Switch
+                        └── Separator // lineHiddenRoot
+                            ├── Material
+                            ├── DepthBuffer // GREATER
+                            ├── Separator // [*]lineRoot
+                            │   ├── DrawStyle
+                            │   └── SoBrepLineSet
+                            └── Separator // [*]silhouetteLineRoot
+                                ├── DrawStyle
+                                └── SoBrepLineSet
