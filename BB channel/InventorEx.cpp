@@ -26,6 +26,7 @@
 #include <Inventor/nodes/SoPointLight.h>
 #include <Inventor/nodes/SoTransparencyType.h>
 #include <Inventor/nodes/SoPolygonOffset.h>
+#include <Inventor/nodes/SoLineSet.h>
 #include <Inventor/nodes/SoIndexedFaceSet.h>
 #include <Inventor/nodes/SoIndexedLineSet.h>
 #include <Inventor/nodes/SoTransform.h>
@@ -129,6 +130,12 @@ InventorEx::InventorEx(int argc, char** argv)
         {"oneSideCorrect", std::bind(&InventorEx::oneSideCorrect, this)},
         {"glTwoSide", std::bind(&InventorEx::glTwoSide, this)},
         {"staticWireframe", std::bind(&InventorEx::staticWireframe, this)},
+        {"removeAllChildren", std::bind(&InventorEx::removeAllChildren, this)},
+        {"renderImage", std::bind(&InventorEx::renderImage, this)},
+        {"refMain", std::bind(&InventorEx::refMain, this)},
+        {"bigSphere", std::bind(&InventorEx::bigSphere, this)},
+        {"dotLine", std::bind(&InventorEx::dotLine, this)},
+        {"dotCircle", std::bind(&InventorEx::dotCircle, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -285,13 +292,13 @@ const std::map<std::string, std::function<void(void)>>& InventorEx::getFunctions
 // function
 void InventorEx::sphere()
 {
-    SoClipPlane* clip = new SoClipPlane;
-    clip->plane.setValue(SbPlane(SbVec3f(0, 1, 0), SbVec3f(0, 0, 0)));
-    m_root->addChild(clip);
+    //SoClipPlane* clip = new SoClipPlane;
+    //clip->plane.setValue(SbPlane(SbVec3f(0, 1, 0), SbVec3f(0, 0, 0)));
+    //m_root->addChild(clip);
     SoSphere* sphere = new SoSphere;
-    SoDepthBuffer* depth = new SoDepthBuffer;
-    depth->test.setValue(false);
-    m_root->addChild(depth);
+    //SoDepthBuffer* depth = new SoDepthBuffer;
+    //depth->test.setValue(false);
+    //m_root->addChild(depth);
     m_root->addChild(sphere);
 }
 
@@ -1718,7 +1725,7 @@ std::vector<InventorEx::InventorEx::ShapeData> InventorEx::generateRandomCuboids
 }
 
 #define CUBECOUNT 20
-//#define  USEDELAYRENDER
+#define  USEDELAYRENDER
 #ifdef USEDELAYRENDER
 /*
 About polygonOffset:
@@ -2146,7 +2153,7 @@ void InventorEx::pointInCube()
 {
     CREATE_NODE(SoSeparator, separator)
     CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoCube/*SoSphere*/, point)
+    CREATE_NODE(/*SoCube*/SoSphere, point)
     CREATE_NODE(SoMaterial, material)
     CREATE_NODE(SoDepthBuffer, depthbuffer)
     CREATE_NODE(SoLightModel, lightModel)
@@ -2171,10 +2178,10 @@ void InventorEx::pointInCube()
     cube->width = 10;
     cube->height = 10;
     cube->depth = 10;
-    point->width = 2;
-    point->height = 2;
-    point->depth = 2;
-    //point->radius = 1.0f;
+    //point->width = 2;
+    //point->height = 2;
+    //point->depth = 2;
+    point->radius = 1.0f;
 
     shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
     shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
@@ -3788,4 +3795,225 @@ void InventorEx::staticWireframe()
     lineDrawStyle->style = SoDrawStyle::LINES;
     lineMaterial->diffuseColor.setValue(51.0f / 255.0f, 51.0f / 255.0f, 51.0f / 255.0f);
     lines->coordIndex.setValues(0, 24, lineIndices);
+}
+
+
+void InventorEx::removeAllChildren()
+{
+    SoSeparator* Q = new SoSeparator;
+    SoSeparator* R = new SoSeparator;
+    SoSeparator* S = new SoSeparator;
+
+    Q->addChild(S);
+    R->addChild(S);
+
+    int refCount[3] = { 0 };
+    refCount[0] = Q->getRefCount();
+    refCount[1] = R->getRefCount();
+    refCount[2] = S->getRefCount();
+    for (int i = 0; i < 3; ++i)
+    {
+        std::cout << refCount[i] << ' ';
+    }
+    std::cout << std::endl;
+
+    Q->ref();
+    refCount[0] = Q->getRefCount();
+    refCount[1] = R->getRefCount();
+    refCount[2] = S->getRefCount();
+    for (int i = 0; i < 3; ++i)
+    {
+        std::cout << refCount[i] << ' ';
+    }
+    std::cout << std::endl;
+
+    std::cout << "0 for unref\n1 for unrefNoDelete\n2 for removeAllChildren\n3 for removeThenUnref" << std::endl;
+    int isDelete = 0;
+    std::cin >> isDelete;
+    switch (isDelete)
+    {
+    case 0:
+        Q->unref();
+        break;
+    case 1:
+        Q->unrefNoDelete();
+        break;
+    case 2:
+        Q->removeAllChildren();
+        break;
+    case 3:
+        Q->removeAllChildren();
+        Q->unref();
+        break;
+    }
+    refCount[0] = Q->getRefCount();
+    refCount[1] = R->getRefCount();
+    refCount[2] = S->getRefCount();
+    for (int i = 0; i < 3; ++i)
+    {
+        std::cout << refCount[i] << ' ';
+    }
+    std::cout << std::endl << std::endl;
+}
+
+
+QImage g_img;
+void glReadPixelsCallback(void*, SoAction* action) 
+{
+    if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+    {
+        // 首先判断动作是否为SoGLRenderAction
+        SoGLRenderAction* glRenderAction = dynamic_cast<SoGLRenderAction*>(action);
+        if (glRenderAction)
+        {
+            // 获取与此渲染动作相关联的视口区域
+            const SbViewportRegion& vp = glRenderAction->getViewportRegion();
+            SbVec2s size = vp.getViewportSizePixels();
+            int width = size[0];
+            int height = size[1];
+
+            // 接下来你可以使用这个尺寸来调用glReadPixels
+            QImage img(QSize(width, height), QImage::Format_RGB32);
+            glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, img.bits());
+            g_img = img;
+            g_img.save("../Data/image.png", "PNG");
+        }
+    }
+}
+
+void glDrawPixelsCallback(void*, SoAction* action)
+{
+    if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+    {
+        glDisable(GL_DEPTH_TEST);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // 首先判断动作是否为SoGLRenderAction
+        SoGLRenderAction* glRenderAction = dynamic_cast<SoGLRenderAction*>(action);
+        if (glRenderAction)
+        {
+            // 获取与此渲染动作相关联的视口区域
+            const SbViewportRegion& vp = glRenderAction->getViewportRegion();
+            SbVec2s size = vp.getViewportSizePixels();
+            int width = size[0];
+            int height = size[1];
+
+            // 接下来你可以使用这个尺寸来调用glReadPixels
+            glDrawPixels(width, height, GL_BGRA, GL_UNSIGNED_BYTE, g_img.bits());
+        }
+
+        glEnable(GL_DEPTH_TEST);
+    }
+}
+
+void InventorEx::renderImage()
+{
+    SoSphere* sphere = new SoSphere;
+    m_root->addChild(sphere);
+
+    SoCallback* glReadPixelsCB = new SoCallback;
+    glReadPixelsCB->setCallback(glReadPixelsCallback);
+    m_root->addChild(glReadPixelsCB);
+
+    SoCallback* glDrawPixelsCB = new SoCallback;
+    glDrawPixelsCB->setCallback(glDrawPixelsCallback);
+    m_root->addChild(glDrawPixelsCB);
+}
+
+SoSeparator* InventorEx::refInterface()
+{
+    SoSeparator* pLocalRoot = new SoSeparator;
+    pLocalRoot->addChild(new SoSphere);
+    SoAction* pAction = new SoGLRenderAction(m_viewer->getSoRenderManager()->getViewportRegion());
+    pAction->apply(pLocalRoot);
+    return pLocalRoot;
+}
+
+void InventorEx::refMain()
+{
+    m_root->addChild(refInterface());
+}
+
+void InventorEx::bigSphere()
+{
+    SoSphere* sphere = new SoSphere;
+    m_root->addChild(sphere);
+
+    int degree = 0;
+    std::cin >> degree;
+    sphere->radius = pow(10, degree); // <=18 good
+}
+
+void InventorEx::dotLine()
+{
+    float pts[8][3] = {
+    { 0.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 1.0, 0.0 },
+    { 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 1.0, 0.0, 1.0 },
+    { 1.0, 1.0, 1.0 },
+    { 0.0, 1.0, 1.0 },
+    };
+    int32_t lineIndices[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    SoDeferredRender* deferredRender = new SoDeferredRender(true);
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoLineSet* lineSet = new SoLineSet;
+    SoMaterial* material = new SoMaterial;
+
+    m_root->addChild(deferredRender);
+    deferredRender->addChild(drawStyle);
+    deferredRender->addChild(coords);
+    deferredRender->addChild(material);
+    deferredRender->addChild(lineSet);
+
+    drawStyle->style = SoDrawStyle::LINES;
+    drawStyle->linePattern.setValue(0xff00);
+    material->transparency = 0.1;
+    coords->point.setValues(0, 8, pts);
+    //lineSet->coordIndex.setValues(0, 24, lineIndices);
+    lineSet->numVertices.setValue(8);
+}
+
+void InventorEx::dotCircle()
+{
+    SoCoordinate3* coords = new SoCoordinate3;
+    const int N = 1000; // 顶点数
+    const float radius = 1.0f; // 圆的半径
+
+    // 计算圆的顶点
+    for (int i = 0; i <= N; ++i) {
+        float angle = 2.0f * M_PI * i / N;
+        coords->point.set1Value(i, radius * cos(angle), radius * sin(angle), 0.0f);
+    }
+
+    // 创建一个线集来绘制圆
+    auto* lines = new SoLineSet;
+    lines->numVertices.setValue(N + 1); // 加1是为了闭合圆
+
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    SoMaterial* material = new SoMaterial;
+
+    // 组装场景图
+    SoDeferredRender* deferredRender = new SoDeferredRender(true);
+    m_root->addChild(deferredRender);
+    deferredRender->addChild(coords);
+    deferredRender->addChild(drawStyle);
+    deferredRender->addChild(material);
+    deferredRender->addChild(lines);
+
+    drawStyle->style = SoDrawStyle::LINES;
+    drawStyle->linePattern.setValue(0xf0);
+    material->transparency = 0.1;
+
 }

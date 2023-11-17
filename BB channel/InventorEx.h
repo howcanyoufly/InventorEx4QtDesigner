@@ -112,6 +112,13 @@ private:
 
     void replaceGroup();
     void staticWireframe();
+    void removeAllChildren();
+    void renderImage();
+    SoSeparator* refInterface();
+    void refMain();
+    void bigSphere();
+    void dotLine();
+    void dotCircle();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
