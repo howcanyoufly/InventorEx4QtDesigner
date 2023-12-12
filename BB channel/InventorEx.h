@@ -119,6 +119,12 @@ private:
     void bigSphere();
     void dotLine();
     void dotCircle();
+    void fitPlane();
+    SoSwitch* assembleBodySceneShader(const ShapeData& data);
+    void performance();
+    SoSeparator* assembleSingleBodyScene(const std::vector<ShapeData>& cuboids);
+    void pointSet();
+    void customPolygonOffset();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 

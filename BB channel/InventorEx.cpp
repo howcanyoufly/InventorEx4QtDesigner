@@ -47,6 +47,8 @@
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
 #include <Inventor/actions/SoWriteAction.h>
+#include <Inventor/actions/SoGetBoundingBoxAction.h>
+#include <Inventor/actions/SoReorganizeAction.h>
 #include <Inventor/elements/SoGLLazyElement.h>
 #include <Inventor/elements/SoCacheElement.h>
 #include <Inventor/elements/SoViewingMatrixElement.h>
@@ -136,6 +138,10 @@ InventorEx::InventorEx(int argc, char** argv)
         {"bigSphere", std::bind(&InventorEx::bigSphere, this)},
         {"dotLine", std::bind(&InventorEx::dotLine, this)},
         {"dotCircle", std::bind(&InventorEx::dotCircle, this)},
+        {"fitPlane", std::bind(&InventorEx::fitPlane, this)},
+        {"performance", std::bind(&InventorEx::performance, this)},
+        {"pointSet", std::bind(&InventorEx::pointSet, this)},
+        {"customPolygonOffset", std::bind(&InventorEx::customPolygonOffset, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -4016,4 +4022,235 @@ void InventorEx::dotCircle()
     drawStyle->linePattern.setValue(0xf0);
     material->transparency = 0.1;
 
+}
+
+void InventorEx::fitPlane()
+{
+    float pts[4][3] = {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+        { 1.0, 1.0, 0.0 },
+        { 0.0, 1.0, 0.0 },
+    };
+    int32_t faceIndices[8] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX
+    };
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoShapeHints* shapeHints = new SoShapeHints;
+    SoLightModel* lightModel = new SoLightModel;
+
+    m_root->addChild(coords);
+    m_root->addChild(shapeHints);
+    m_root->addChild(lightModel);
+    m_root->addChild(faceSet);
+
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+
+    lightModel->model = SoLightModel::BASE_COLOR;
+
+    coords->point.setValues(0, 4, pts);
+    faceSet->coordIndex.setValues(0, 8, faceIndices);
+
+    SoGetBoundingBoxAction action(m_viewer->getSoRenderManager()->getViewportRegion());
+    action.apply(m_root);
+    SbBox3f box = action.getBoundingBox();
+    SbVec3f min = box.getMin();
+    SbVec3f max = box.getMax();
+}
+
+SoSwitch* InventorEx::assembleBodySceneShader(const ShapeData& data)
+{
+    CREATE_NODE(SoSwitch, bodySwitch)
+    CREATE_NODE(SoSeparator, body)
+    CREATE_NODE(SoScale, scale)
+    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+    CREATE_NODE(SoTransparencyType, trasparencyType)
+    CREATE_NODE(SoSeparator, dataNode)
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoSwitch, renderModeSwitch)
+    CREATE_NODE(SoSeparator, shadeWithEdge)
+    CREATE_NODE(SoPolygonOffset, polygonOffset)
+    CREATE_NODE(SoSeparator, faceRoot)
+    CREATE_NODE(SoMaterial, faceMaterial)
+    CREATE_NODE(SoIndexedFaceSet, faceSet)
+    CREATE_NODE(SoSeparator, lineRoot)
+    CREATE_NODE(SoIndexedLineSet, lineSet)
+
+    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {bodySwitch, body},
+        {body, scale},
+        {body, trasparencyTypeSwitch},
+        {body, dataNode},
+        {trasparencyTypeSwitch, trasparencyType},
+        {dataNode, coords},
+        {dataNode, renderModeSwitch},
+        {renderModeSwitch, shadeWithEdge},
+        {shadeWithEdge, polygonOffset},
+        {shadeWithEdge, faceRoot},
+        {shadeWithEdge, lineRoot},
+        {faceRoot, faceMaterial},
+        {faceRoot, faceSet},
+        {lineRoot, lineSet},
+    };
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+
+    bodySwitch->whichChild = 0;
+    trasparencyTypeSwitch->whichChild = 0;
+    renderModeSwitch->whichChild = 0;
+
+    coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
+    faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
+    lineSet->coordIndex.setValues(0, data.lineIndices.size(), data.lineIndices.data());
+
+    return bodySwitch;
+}
+
+void InventorEx::performance()
+{
+    unsigned int count = 0;
+    std::cout << "count:" << std::endl;
+    std::cin >> count;
+    std::vector<ShapeData> randomCuboids = generateRandomCuboids(count/*count*/, 5.0/*size*/);
+
+    CREATE_NODE(SoSeparator, bodies)
+
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+    {
+        {m_root, new SoGradientBackground},
+        {m_root, bodies},
+    };
+
+    int option = 0;
+    std::cout << "0 for bodies\n1 for body\n";
+    std::cin >> option;
+
+    for (const auto& relationship : relationships)
+    {
+        ADD_CHILD(relationship.first, relationship.second);
+    }
+    if (0 == option)
+    {
+        for (const auto& data : randomCuboids)
+        {
+            ADD_CHILD(bodies, assembleBodySceneShader(data));
+        }
+    }
+    else
+    {
+        ADD_CHILD(bodies, assembleSingleBodyScene(randomCuboids));
+    }
+
+    std::cout << "0 for unuse\n1 for use VBOs\n";
+    std::cin >> option;
+    if (1 == option)
+    {
+        SoReorganizeAction action;
+        action.apply(m_root);
+    }
+    //m_root->renderCaching = SoSeparator::OFF;
+}
+
+SoSeparator* InventorEx::assembleSingleBodyScene(const std::vector<ShapeData>& cuboids) {
+    CREATE_NODE(SoSeparator, body);
+    CREATE_NODE(SoCoordinate3, coords);
+    CREATE_NODE(SoIndexedFaceSet, faceSet);
+    CREATE_NODE(SoMaterial, materials);
+    CREATE_NODE(SoMaterialBinding, materialBinding);
+
+    std::vector<SbVec3f> allPoints;
+    std::vector<int32_t> allFaceIndices;
+    std::vector<SbColor> allColors;
+
+    for (const auto& data : cuboids) {
+        // 计算当前点的偏移量
+        int currentOffset = allPoints.size();
+
+        // 添加点
+        for (const auto& point : data.points) {
+            allPoints.push_back(SbVec3f(point[0], point[1], point[2]));
+        }
+
+        // 添加面索引，并为每个面添加一个颜色
+        for (int idx : data.faceIndices) {
+            if (idx == SO_END_FACE_INDEX) {
+                allFaceIndices.push_back(SO_END_FACE_INDEX);
+                // 添加随机颜色
+                allColors.push_back(SbColor(rand() / float(RAND_MAX), rand() / float(RAND_MAX), rand() / float(RAND_MAX)));
+            }
+            else {
+                allFaceIndices.push_back(idx + currentOffset);
+            }
+        }
+    }
+
+    coords->point.setValues(0, allPoints.size(), allPoints.data());
+    faceSet->coordIndex.setValues(0, allFaceIndices.size(), allFaceIndices.data());
+    materials->diffuseColor.setValues(0, allColors.size(), allColors.data());
+    materialBinding->value = SoMaterialBinding::PER_FACE;
+
+    body->addChild(coords);
+    body->addChild(materials);
+    body->addChild(materialBinding);
+    body->addChild(faceSet);
+
+    return body;
+}
+
+void InventorEx::pointSet()
+{
+    CREATE_NODE(SoPointSet, pointSet)
+    ADD_CHILD(m_root, pointSet);
+}
+
+void InventorEx::customPolygonOffset()
+{
+    float pts[2][3] = 
+    {
+        { 0.0, 0.0, 0.0 },
+        { 1.0, 0.0, 0.0 },
+    };
+
+    CREATE_NODE(SoCoordinate3, coords)
+    CREATE_NODE(SoLineSet, lineSet)
+    CREATE_NODE(SoMaterial, materialRed)
+    CREATE_NODE(SoMaterial, materialYellow)
+    CREATE_NODE(SoCallback, customPolygonOffsetNode)
+    CREATE_NODE(SoCallback, disablePolygonOffsetNode)
+
+    ADD_CHILD(m_root, coords);
+    ADD_CHILD(m_root, materialRed);
+    ADD_CHILD(m_root, customPolygonOffsetNode);
+    ADD_CHILD(m_root, lineSet);
+    ADD_CHILD(m_root, disablePolygonOffsetNode)
+    ADD_CHILD(m_root, materialYellow);
+    ADD_CHILD(m_root, lineSet);
+
+    materialRed->diffuseColor.setValue(1, 0, 0);
+    materialYellow->diffuseColor.setValue(1, 1, 0);
+
+    coords->point.setValues(0, 2, pts);
+    lineSet->numVertices.setValue(2);
+
+    customPolygonOffsetNode->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glPolygonOffset(-1.0f, -1.0f);
+            glEnable(GL_POLYGON_OFFSET_UNITS);
+        }
+    });
+
+    disablePolygonOffsetNode->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glDisable(GL_POLYGON_OFFSET_UNITS);
+        }
+    });
 }
