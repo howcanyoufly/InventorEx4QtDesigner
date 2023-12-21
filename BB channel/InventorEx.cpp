@@ -43,6 +43,7 @@
 #include <Inventor/nodes/SoShapeHints.h>
 #include <Inventor/nodes/SoClipPlane.h>
 #include <Inventor/nodes/SoRotation.h>
+#include <Inventor/nodes/SoLevelOfDetail.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -142,6 +143,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"performance", std::bind(&InventorEx::performance, this)},
         {"pointSet", std::bind(&InventorEx::pointSet, this)},
         {"customPolygonOffset", std::bind(&InventorEx::customPolygonOffset, this)},
+        {"lightsTest", std::bind(&InventorEx::lightsTest, this)},
+        {"levelOfDetail", std::bind(&InventorEx::levelOfDetail, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -4253,4 +4256,65 @@ void InventorEx::customPolygonOffset()
             glDisable(GL_POLYGON_OFFSET_UNITS);
         }
     });
+}
+
+void InventorEx::lightsTest()
+{
+    CREATE_NODE(SoSeparator, lightsRoot)
+    CREATE_NODE(SoDirectionalLight, directionalLight)
+    CREATE_NODE(SoCube, cube)
+
+    ADD_CHILD(m_root, lightsRoot);
+    ADD_CHILD(lightsRoot, directionalLight);
+    ADD_CHILD(m_root, cube);
+
+    directionalLight->direction.setValue(0, -1, -1);
+    directionalLight->color.setValue(1, 0, 0);
+}
+
+void mouseDragCB(void* userData, SoEventCallback* eventCB) {
+    SoSeparator* scene = (SoSeparator*)userData;
+    const SoEvent* event = eventCB->getEvent();
+
+    // 检查是否为鼠标拖动事件
+    if (SO_MOUSE_RELEASE_EVENT(event, ANY)) {
+        // 这里更新相机的位置和方向
+        // 根据事件的细节（如鼠标的位置和移动方向）来旋转相机
+        // ...
+
+        // 更新相机后，重新计算包围盒
+        SoGetBoundingBoxAction action(SbViewportRegion(800, 600));
+        action.setInCameraSpace(true);
+        action.apply(scene);
+        SbXfBox3f xbox = action.getXfBoundingBox();
+        SbBox3f box = xbox.project();
+
+        std::cout << "boxSize: " << box.getMax()[0] - box.getMin()[0] << ' '
+            << box.getMax()[1] - box.getMin()[1] << ' '
+            << box.getMax()[2] - box.getMin()[2] << std::endl;
+    }
+}
+
+void InventorEx::levelOfDetail()
+{
+    CREATE_NODE(SoLevelOfDetail, LOD)
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoTranslation, trans)
+    CREATE_NODE(SoEventCallback, eventCB)
+
+    ADD_CHILD(m_root, LOD);
+    ADD_CHILD(LOD, cube);
+    ADD_CHILD(LOD, trans);
+    ADD_CHILD(LOD, cube);
+    ADD_CHILD(m_root, eventCB);
+
+    m_viewer->setSceneGraph(m_root);
+    m_viewer->show();
+
+    trans->translation.setValue(0, 0, 5);
+
+    m_root->renderCaching = false;
+    m_root->boundingBoxCaching = false;
+
+    eventCB->addEventCallback(SoMouseButtonEvent::getClassTypeId(), mouseDragCB, m_viewer->getSoRenderManager()->getSceneGraph());
 }

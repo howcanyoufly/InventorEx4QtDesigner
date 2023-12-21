@@ -125,6 +125,8 @@ private:
     SoSeparator* assembleSingleBodyScene(const std::vector<ShapeData>& cuboids);
     void pointSet();
     void customPolygonOffset();
+    void lightsTest();
+    void levelOfDetail();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
