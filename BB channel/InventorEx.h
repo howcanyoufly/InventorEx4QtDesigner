@@ -127,6 +127,8 @@ private:
     void customPolygonOffset();
     void lightsTest();
     void levelOfDetail();
+    void OBB();
+    void textOutline();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 

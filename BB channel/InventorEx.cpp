@@ -8,6 +8,7 @@
 #include <Inventor/nodes/SoCone.h>
 #include <Inventor/nodes/SoCube.h>
 #include <Inventor/nodes/SoCylinder.h>
+#include <Inventor/nodes/SoText2.h>
 #include <Inventor/nodes/SoText3.h>
 #include <Inventor/nodes/SoDirectionalLight.h>
 #include <Inventor/nodes/SoMaterial.h>
@@ -44,6 +45,7 @@
 #include <Inventor/nodes/SoClipPlane.h>
 #include <Inventor/nodes/SoRotation.h>
 #include <Inventor/nodes/SoLevelOfDetail.h>
+#include <Inventor/nodes/SoFont.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -145,6 +147,8 @@ InventorEx::InventorEx(int argc, char** argv)
         {"customPolygonOffset", std::bind(&InventorEx::customPolygonOffset, this)},
         {"lightsTest", std::bind(&InventorEx::lightsTest, this)},
         {"levelOfDetail", std::bind(&InventorEx::levelOfDetail, this)},
+        {"OBB", std::bind(&InventorEx::OBB, this)},
+        {"textOutline", std::bind(&InventorEx::textOutline, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -352,25 +356,39 @@ void InventorEx::engineSpin()
 
 void InventorEx::globalFlds()
 {
-    // Create a perspective camera and add it to the scene graph
-    SoPerspectiveCamera* myCamera = new SoPerspectiveCamera;
-    m_root->addChild(myCamera);
+    SoSeparator* time1 = new SoSeparator;
 
-    // Add a directional light to the scene graph
-    m_root->addChild(new SoDirectionalLight);
+    SoFont* font = new SoFont;
+    font->name.setValue("Courier-BoldOblique");
+    font->size.setValue(10);
+    m_root->addChild(font);
 
     // Add a material node with a red color to the scene graph
     SoMaterial* myMaterial = new SoMaterial;
     myMaterial->diffuseColor.setValue(1.0, 0.0, 0.0); // Red
-    m_root->addChild(myMaterial);
+    time1->addChild(myMaterial);
 
     // Create a Text3 object, and connect to the realTime field
     SoText3* myText = new SoText3;
-    m_root->addChild(myText);
+    //SoText2* myText = new SoText2;
+    time1->addChild(myText);
     myText->string.connectFrom(SoDB::getGlobalField("realTime"));
     //SoElapsedTime* myCounter = new SoElapsedTime;
     //myCounter->speed = -1;
     //myText->string.connectFrom(&myCounter->timeOut);
+
+    SoSeparator* time2 = new SoSeparator;
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    drawStyle->style = SoDrawStyleElement::LINES;
+    drawStyle->lineWidth = 4;
+    time2->addChild(drawStyle);
+    SoMaterial* myMaterial2 = new SoMaterial;
+    myMaterial2->diffuseColor.setValue(1.0, 1.0, 0.0);
+    time2->addChild(myMaterial2);
+    time2->addChild(myText);
+
+    m_root->addChild(time2);
+    m_root->addChild(time1);
 }
 
 void InventorEx::heartSpline()
@@ -4286,8 +4304,9 @@ void mouseDragCB(void* userData, SoEventCallback* eventCB) {
         SoGetBoundingBoxAction action(SbViewportRegion(800, 600));
         action.setInCameraSpace(true);
         action.apply(scene);
-        SbXfBox3f xbox = action.getXfBoundingBox();
-        SbBox3f box = xbox.project();
+        //SbXfBox3f xbox = action.getXfBoundingBox();
+        //SbBox3f box = xbox.project();
+        SbBox3f box = action.getBoundingBox();
 
         std::cout << "boxSize: " << box.getMax()[0] - box.getMin()[0] << ' '
             << box.getMax()[1] - box.getMin()[1] << ' '
@@ -4311,10 +4330,119 @@ void InventorEx::levelOfDetail()
     m_viewer->setSceneGraph(m_root);
     m_viewer->show();
 
-    trans->translation.setValue(0, 0, 5);
+    trans->translation.setValue(2, 2, 2);
 
     m_root->renderCaching = false;
     m_root->boundingBoxCaching = false;
 
     eventCB->addEventCallback(SoMouseButtonEvent::getClassTypeId(), mouseDragCB, m_viewer->getSoRenderManager()->getSceneGraph());
 }
+
+void InventorEx::OBB()
+{
+    CREATE_NODE(SoOrthographicCamera, cam)
+    CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoTranslation, trans)
+    CREATE_NODE(SoEventCallback, eventCB)
+
+    ADD_CHILD(m_root, cam);
+    ADD_CHILD(m_root, cube)
+    ADD_CHILD(m_root, trans)
+    ADD_CHILD(m_root, cube)
+    ADD_CHILD(m_root, eventCB)
+
+    cam->position.setValue(0.0f, 0.0f, 5.0f);
+    cam->nearDistance = 2.0f;
+    cam->farDistance = 12.0f;
+
+    m_viewer->setSceneGraph(m_root);
+    m_viewer->show();
+
+    trans->translation.setValue(2, 2, 2);
+
+    eventCB->addEventCallback(SoMouseButtonEvent::getClassTypeId(), mouseDragCB, m_viewer->getSoRenderManager()->getSceneGraph());
+}
+
+void InventorEx::textOutline()
+{
+    // 设置字体
+    SoFont* font = new SoFont;
+    font->name.setValue("Courier-BoldOblique");
+    font->size.setValue(10);
+
+    // 加粗线框
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    drawStyle->style = SoDrawStyleElement::LINES;
+    drawStyle->lineWidth = 5;
+
+    // 禁用写颜色缓冲
+    SoColorMask* colorMask = new SoColorMask;
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+
+    // 创建文字节点
+    SoText3* text = new SoText3;
+    text->string.connectFrom(SoDB::getGlobalField("realTime"));
+
+    // 创建模板回调
+    SoCallback* stencilInit = new SoCallback;
+    stencilInit->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            // Enable stencil test.
+            glEnable(GL_STENCIL_TEST);
+            glClearStencil(0);
+            glClear(GL_STENCIL_BUFFER_BIT);
+        }
+    });
+
+    SoCallback* stencilWrite = new SoCallback;
+    stencilWrite->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            // Set stencil operation. Increment the stencil buffer value when depth test passes.
+            glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+            // Configure stencil test to always pass and not use the value in the stencil buffer.
+            glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        }
+    });
+
+    SoCallback* stencilTest = new SoCallback;
+    stencilTest->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            // Configure stencil test to pass only if the value in the stencil buffer is 0.
+            glStencilFunc(GL_EQUAL, 0, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        }
+    });
+
+    SoCallback* stencilReset = new SoCallback;
+    stencilReset->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            // Reset stencil buffer value to 0.
+            glStencilFunc(GL_ALWAYS, 0, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        }
+    });
+
+    // 绘制模板
+    SoSeparator* stencilWriteSep = new SoSeparator;
+    stencilWriteSep->addChild(colorMask);
+    stencilWriteSep->addChild(stencilWrite);
+    stencilWriteSep->addChild(text);
+    stencilWriteSep->addChild(stencilReset);
+
+    // 使用模板绘制边框
+    SoSeparator* stencilTestSep = new SoSeparator;
+    stencilTestSep->addChild(stencilTest);
+    stencilTestSep->addChild(drawStyle);
+    stencilTestSep->addChild(text);
+    stencilWriteSep->addChild(stencilReset);
+
+    // 组合场景
+    m_root->addChild(stencilInit);
+    m_root->addChild(font);
+    m_root->addChild(stencilWriteSep);
+    m_root->addChild(stencilTestSep);
+}
+
