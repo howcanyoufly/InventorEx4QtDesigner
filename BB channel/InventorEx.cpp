@@ -149,6 +149,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"levelOfDetail", std::bind(&InventorEx::levelOfDetail, this)},
         {"OBB", std::bind(&InventorEx::OBB, this)},
         {"textOutline", std::bind(&InventorEx::textOutline, this)},
+        {"outputBuffer", std::bind(&InventorEx::outputBuffer, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -4370,10 +4371,15 @@ void InventorEx::textOutline()
     font->name.setValue("Courier-BoldOblique");
     font->size.setValue(10);
 
+    // 保证线框不被深度测试冲突影响
+    SoPolygonOffset* polygonOffset = new SoPolygonOffset;
+
     // 加粗线框
     SoDrawStyle* drawStyle = new SoDrawStyle;
     drawStyle->style = SoDrawStyleElement::LINES;
-    drawStyle->lineWidth = 5;
+    drawStyle->lineWidth = 4;
+    SoLightModel* lightModel = new SoLightModel;
+    lightModel->model = SoLightModel::BASE_COLOR;
 
     // 禁用写颜色缓冲
     SoColorMask* colorMask = new SoColorMask;
@@ -4382,9 +4388,16 @@ void InventorEx::textOutline()
     colorMask->blue = FALSE;
     colorMask->alpha = FALSE;
 
+    // 禁用透明度，防止透明排序影响模板写入的时机
+    SoTransparencyType* transparencyType = new SoTransparencyType;
+    transparencyType->value = SoTransparencyType::NONE;
+
     // 创建文字节点
-    SoText3* text = new SoText3;
-    text->string.connectFrom(SoDB::getGlobalField("realTime"));
+    //SoText3* text = new SoText3;
+    //text->string.connectFrom(SoDB::getGlobalField("realTime"));
+    SoCylinder* text = new SoCylinder;
+    text->radius.setValue(3.0f);
+    text->height.setValue(10.0f);
 
     // 创建模板回调
     SoCallback* stencilInit = new SoCallback;
@@ -4427,8 +4440,9 @@ void InventorEx::textOutline()
 
     // 绘制模板
     SoSeparator* stencilWriteSep = new SoSeparator;
-    stencilWriteSep->addChild(colorMask);
     stencilWriteSep->addChild(stencilWrite);
+    stencilWriteSep->addChild(colorMask);
+    stencilWriteSep->addChild(transparencyType);
     stencilWriteSep->addChild(text);
     stencilWriteSep->addChild(stencilReset);
 
@@ -4436,13 +4450,70 @@ void InventorEx::textOutline()
     SoSeparator* stencilTestSep = new SoSeparator;
     stencilTestSep->addChild(stencilTest);
     stencilTestSep->addChild(drawStyle);
+    stencilTestSep->addChild(lightModel);
     stencilTestSep->addChild(text);
     stencilWriteSep->addChild(stencilReset);
 
     // 组合场景
     m_root->addChild(stencilInit);
     m_root->addChild(font);
+    m_root->addChild(polygonOffset);
     m_root->addChild(stencilWriteSep);
     m_root->addChild(stencilTestSep);
+
+    // question：
+    
+    // 轮廓线怎么做wireframe\hiddenLine
+    // wireframe依赖于可见线写模板结果，轮廓线依赖于可见面写模板结果，这两个模板对隐藏线和轮廓线来说是冲突的
+    // 那么，轮廓线是否可以脱离当前管线，作为纹理进行绘制，因为轮廓线并不需要整个场景的深度与模板信息，只需要当前物体的
+
+    // 轮廓线是否需要延迟渲染
+
+    // 轮廓线能否全面代替可见线（解决线面离散不匹配）
+    // 不行，隐藏线怎么生成？
+
+    // 上下离散圆与轮廓边的匹配
 }
 
+
+
+void InventorEx::outputBuffer()
+{
+    // 创建一个黄色的球
+    SoSeparator* yellowSphere = new SoSeparator;
+    yellowSphere->addChild(new SoMaterial);
+    yellowSphere->addChild(new SoSphere);
+    ((SoMaterial*)yellowSphere->getChild(0))->diffuseColor.setValue(1, 1, 0);
+
+    // 创建一个红色的球，在2，2，2处
+    SoSeparator* redSphere = new SoSeparator;
+    redSphere->ref();
+    redSphere->addChild(new SoTranslation);
+    redSphere->addChild(new SoMaterial);
+    redSphere->addChild(new SoSphere);
+    ((SoTranslation*)redSphere->getChild(0))->translation.setValue(2, 2, 2);
+    ((SoMaterial*)redSphere->getChild(1))->diffuseColor.setValue(1, 0, 0);
+
+    // 黄色的球直接添加至root，红色的球写入buffer
+    m_root->addChild(yellowSphere);
+
+    SoOutput out;
+    out.setBinary(TRUE);
+    out.setBuffer(malloc(1024), 1024, (void* (*)(void*, size_t))realloc);
+    SoWriteAction writeAction(&out);
+    writeAction.apply(redSphere);
+
+    void* buffer;
+    size_t bufferSize;
+    out.getBuffer(buffer, bufferSize);
+
+    // 从buffer中读取数据
+    SoInput in;
+    in.setBuffer(buffer, bufferSize);
+    SoSeparator* readSphere = SoDB::readAll(&in);
+    if (readSphere)
+        m_root->addChild(readSphere);
+
+    redSphere->unref();
+    free(buffer);
+}

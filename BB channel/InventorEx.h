@@ -129,6 +129,7 @@ private:
     void levelOfDetail();
     void OBB();
     void textOutline();
+    void outputBuffer();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
