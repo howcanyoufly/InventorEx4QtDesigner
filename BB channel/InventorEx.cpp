@@ -148,8 +148,10 @@ InventorEx::InventorEx(int argc, char** argv)
         {"lightsTest", std::bind(&InventorEx::lightsTest, this)},
         {"levelOfDetail", std::bind(&InventorEx::levelOfDetail, this)},
         {"OBB", std::bind(&InventorEx::OBB, this)},
-        {"textOutline", std::bind(&InventorEx::textOutline, this)},
+        {"outline", std::bind(&InventorEx::outline, this)},
         {"outputBuffer", std::bind(&InventorEx::outputBuffer, this)},
+        {"cylinderFace", std::bind(&InventorEx::cylinderFace, this)},
+        {"gravitationalWell", std::bind(&InventorEx::gravitationalWell, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -2302,10 +2304,12 @@ void InventorEx::colorMaskTest()
 
 void InventorEx::cylinder()
 {
-    CREATE_NODE(SoCylinder, cylinder);
+    CREATE_NODE(SoShapeHints, shapeHints)
+    CREATE_NODE(SoCylinder, cylinder)
 
     std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
+        {m_root, shapeHints},
         {m_root, cylinder},
     };
 
@@ -2313,6 +2317,9 @@ void InventorEx::cylinder()
     {
         ADD_CHILD(relationship.first, relationship.second);
     }
+
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::SOLID;
 
     cylinder->radius = 1.0;
     cylinder->height = 2.0;
@@ -4364,13 +4371,11 @@ void InventorEx::OBB()
     eventCB->addEventCallback(SoMouseButtonEvent::getClassTypeId(), mouseDragCB, m_viewer->getSoRenderManager()->getSceneGraph());
 }
 
-void InventorEx::textOutline()
-{
-    // 设置字体
-    SoFont* font = new SoFont;
-    font->name.setValue("Courier-BoldOblique");
-    font->size.setValue(10);
+SoSeparator* gravWellSep(int gridSize/*网格的大小*/, float spacing/*网格的间距*/, float depthFactor/*深度因子，用于放大中心的"引力井"效果*/);
+SoSeparator* cylFace(float height/*高度*/, float radius/*半径*/, int numSides/*柱面侧面数量*/);
 
+void InventorEx::outline()
+{
     // 保证线框不被深度测试冲突影响
     SoPolygonOffset* polygonOffset = new SoPolygonOffset;
 
@@ -4392,12 +4397,44 @@ void InventorEx::textOutline()
     SoTransparencyType* transparencyType = new SoTransparencyType;
     transparencyType->value = SoTransparencyType::NONE;
 
-    // 创建文字节点
-    //SoText3* text = new SoText3;
-    //text->string.connectFrom(SoDB::getGlobalField("realTime"));
-    SoCylinder* text = new SoCylinder;
-    text->radius.setValue(3.0f);
-    text->height.setValue(10.0f);
+    int option = 0;
+    std::cout << "0:text 1:cylinder 2:gravitationalWell 3:cylinederFace" << std::endl;
+    std::cin >> option;
+    SoSeparator* body = new SoSeparator;
+    switch (option)
+    {
+    case 0:
+    {
+        SoFont* font = new SoFont;
+        font->name.setValue("Courier-BoldOblique");
+        font->size.setValue(10);
+        body->addChild(font);
+        SoText3* text = new SoText3;
+        text->string.connectFrom(SoDB::getGlobalField("realTime"));
+        body->addChild(text);
+        break;
+    }
+    case 1:
+    {
+        SoCylinder* cylinder = new SoCylinder;
+        cylinder->radius.setValue(3.0f);
+        cylinder->height.setValue(10.0f);
+        body->addChild(cylinder);
+        break;
+    }
+    case 2:
+    {
+        body = gravWellSep(60, 1.0, 0.7);
+        break;
+    }
+    case 3:
+    {
+        body = cylFace(10.0f, 3.0f, 60);
+        break;
+    }
+    default:
+        break;
+    }
 
     // 创建模板回调
     SoCallback* stencilInit = new SoCallback;
@@ -4413,10 +4450,10 @@ void InventorEx::textOutline()
     SoCallback* stencilWrite = new SoCallback;
     stencilWrite->setCallback([](void*, SoAction* action) {
         if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
-            // Set stencil operation. Increment the stencil buffer value when depth test passes.
-            glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
             // Configure stencil test to always pass and not use the value in the stencil buffer.
             glStencilFunc(GL_ALWAYS, 0, 0xFF);
+            // Set stencil operation. Increment the stencil buffer value when depth test passes.
+            glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
         }
     });
 
@@ -4443,7 +4480,7 @@ void InventorEx::textOutline()
     stencilWriteSep->addChild(stencilWrite);
     stencilWriteSep->addChild(colorMask);
     stencilWriteSep->addChild(transparencyType);
-    stencilWriteSep->addChild(text);
+    stencilWriteSep->addChild(body);
     stencilWriteSep->addChild(stencilReset);
 
     // 使用模板绘制边框
@@ -4451,31 +4488,42 @@ void InventorEx::textOutline()
     stencilTestSep->addChild(stencilTest);
     stencilTestSep->addChild(drawStyle);
     stencilTestSep->addChild(lightModel);
-    stencilTestSep->addChild(text);
+    stencilTestSep->addChild(body);
     stencilWriteSep->addChild(stencilReset);
 
     // 组合场景
     m_root->addChild(stencilInit);
-    m_root->addChild(font);
     m_root->addChild(polygonOffset);
     m_root->addChild(stencilWriteSep);
     m_root->addChild(stencilTestSep);
 
-    // question：
-    
+    // question:
     // 轮廓线怎么做wireframe\hiddenLine
+    // answer:
     // wireframe依赖于可见线写模板结果，轮廓线依赖于可见面写模板结果，这两个模板对隐藏线和轮廓线来说是冲突的
     // 那么，轮廓线是否可以脱离当前管线，作为纹理进行绘制，因为轮廓线并不需要整个场景的深度与模板信息，只需要当前物体的
+    // 是否模板可以一个写1，一个写2？
+    // glStencilFunc(GL_ALWAYS, 1, 0xFF); // 设置模板测试总是通过，写入的值为1
+    // glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE); // 深度测试通过时替换模板值
 
+    // question:
     // 轮廓线是否需要延迟渲染
+    // answer:
+    // 需要，模板柱面写2得到轮廓线，轮廓线与可见线相同，写1，然后延迟渲染中根据≠1进行模板测试
 
+    // question:
     // 轮廓线能否全面代替可见线（解决线面离散不匹配）
+    // answer:
     // 不行，隐藏线怎么生成？
 
+    // question:
     // 上下离散圆与轮廓边的匹配
+
+    // question:
+    // 轮廓线与人为定义的边重合或理论重合时，该怎么处理
+    // answer:
+    // edge绘制可以反过来进行模板测试=2，但仍会有离散不匹配问题
 }
-
-
 
 void InventorEx::outputBuffer()
 {
@@ -4516,4 +4564,121 @@ void InventorEx::outputBuffer()
 
     redSphere->unref();
     free(buffer);
+}
+
+void InventorEx::cylinderFace()
+{
+    m_root->addChild(cylFace(5.0, 2.0, 20));
+}
+
+SoSeparator* cylFace(float height/*高度*/, float radius/*半径*/, int numSides/*柱面侧面数量*/)
+{
+    SoSeparator* root = new SoSeparator;
+
+    // 创建坐标节点
+    SoCoordinate3* coords = new SoCoordinate3;
+    root->addChild(coords);
+
+    SoShapeHints* shapeHints = new SoShapeHints;
+    root->addChild(shapeHints);
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::SOLID;
+
+    // 计算并添加顶点坐标
+    SbVec3f* vertices = new SbVec3f[2 * numSides];
+    for (int i = 0; i < numSides; ++i) {
+        float angle = 2.0f * M_PI * i / numSides;
+        float x = radius * cos(angle);
+        float z = radius * sin(angle);
+        vertices[2 * i] = SbVec3f(x, height, z);     // 顶部顶点
+        vertices[2 * i + 1] = SbVec3f(x, 0.0f, z);   // 底部顶点
+    }
+    coords->point.setValues(0, 2 * numSides, vertices);
+
+    // 创建索引面集
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    root->addChild(faceSet);
+
+    // 计算并添加索引
+    int* indices = new int[5 * numSides];
+    for (int i = 0; i < numSides; ++i) {
+        int next = (i + 1) % numSides;
+        indices[5 * i] = 2 * i;
+        indices[5 * i + 1] = 2 * next;
+        indices[5 * i + 2] = 2 * next + 1;
+        indices[5 * i + 3] = 2 * i + 1;
+        indices[5 * i + 4] = SO_END_FACE_INDEX;
+    }
+    faceSet->coordIndex.setValues(0, 5 * numSides, indices);
+
+    // 清理
+    delete[] vertices;
+    delete[] indices;
+
+    return root;
+}
+
+void InventorEx::gravitationalWell()
+{
+    m_root->addChild(gravWellSep(20, 1.0, 0.7));
+}
+
+SoSeparator* gravWellSep(int gridSize/*网格的大小*/, float spacing/*网格的间距*/, float depthFactor/*深度因子，用于放大中心的"引力井"效果*/)
+{
+    SoSeparator* root = new SoSeparator;
+
+    // 创建一个坐标节点
+    SoCoordinate3* coords = new SoCoordinate3;
+    root->addChild(coords);
+
+    // 生成曲面上的点
+    SbVec3f* points = new SbVec3f[(gridSize + 1) * (gridSize + 1)];
+    for (int i = 0; i <= gridSize; ++i) {
+        for (int j = 0; j <= gridSize; ++j) {
+            float x = (i - gridSize / 2.0f) * spacing;
+            float y = (j - gridSize / 2.0f) * spacing;
+            // 计算高度值为距离中心的函数
+            float distance = sqrt(x * x + y * y);
+            float z = -depthFactor * distance; // 简化的"引力井"效果
+            points[i * (gridSize + 1) + j] = SbVec3f(x, y, z);
+        }
+    }
+    coords->point.setValues(0, (gridSize + 1) * (gridSize + 1), points);
+
+    // 创建面集索引
+    SoIndexedFaceSet* faces = new SoIndexedFaceSet;
+    root->addChild(faces);
+
+    // 生成面的索引
+    int numFaces = gridSize * gridSize * 2; // 每个网格两个三角形
+    int32_t* indices = new int32_t[numFaces * 4]; // 每个面四个索引（三个顶点加一个结束标志）
+    int idx = 0;
+    for (int i = 0; i < gridSize; ++i) {
+        for (int j = 0; j < gridSize; ++j) {
+            // 计算四个角的索引
+            int p0 = i * (gridSize + 1) + j;
+            int p1 = p0 + 1;
+            int p2 = p0 + (gridSize + 1);
+            int p3 = p2 + 1;
+
+            // 第一个三角形
+            indices[idx++] = p0;
+            indices[idx++] = p2;
+            indices[idx++] = p1;
+            indices[idx++] = SO_END_FACE_INDEX;
+
+            // 第二个三角形
+            indices[idx++] = p1;
+            indices[idx++] = p2;
+            indices[idx++] = p3;
+            indices[idx++] = SO_END_FACE_INDEX;
+        }
+    }
+    faces->coordIndex.setValues(0, numFaces * 4, indices);
+
+    // 清理分配的内存
+    delete[] points;
+    delete[] indices;
+
+    return root;
 }

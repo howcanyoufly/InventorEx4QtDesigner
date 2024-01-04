@@ -128,8 +128,10 @@ private:
     void lightsTest();
     void levelOfDetail();
     void OBB();
-    void textOutline();
+    void outline();
     void outputBuffer();
+    void cylinderFace();
+    void gravitationalWell();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
