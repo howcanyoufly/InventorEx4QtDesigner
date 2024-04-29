@@ -1,4 +1,4 @@
-    
+
 #include "InventorEx.h"
 
 #include <Inventor/SoEventManager.h>
@@ -46,6 +46,11 @@
 #include <Inventor/nodes/SoRotation.h>
 #include <Inventor/nodes/SoLevelOfDetail.h>
 #include <Inventor/nodes/SoFont.h>
+#include <Inventor/nodes/SoExtSelection.h>
+#include <Inventor/nodes/SoShaderProgram.h>
+#include <Inventor/nodes/SoVertexShader.h>
+#include <Inventor/nodes/SoFragmentShader.h>
+#include <Inventor/nodes/SoShaderParameter.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -152,6 +157,13 @@ InventorEx::InventorEx(int argc, char** argv)
         {"outputBuffer", std::bind(&InventorEx::outputBuffer, this)},
         {"cylinderFace", std::bind(&InventorEx::cylinderFace, this)},
         {"gravitationalWell", std::bind(&InventorEx::gravitationalWell, this)},
+        {"2outline", std::bind(&InventorEx::outline2, this)},
+        {"shaderProgram", std::bind(&InventorEx::shaderProgram, this)},
+        {"shaderHightlight", std::bind(&InventorEx::shaderHightlight, this)},
+        {"zfighting", std::bind(&InventorEx::zfighting, this)},
+        {"materialIndex", std::bind(&InventorEx::materialIndex, this)},
+        {"divideTransp", std::bind(&InventorEx::divideTransp, this)},
+        {"text2", std::bind(&InventorEx::text2, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -167,7 +179,7 @@ InventorEx::InventorEx(int argc, char** argv)
     // Initializes Quarter (and implicitly also Coin and Qt
     Quarter::init();
     // Remember to initialize the custom node!
-    SoOITNode::initClass();  
+    SoOITNode::initClass();
     SoGradientBackground::initClass();
     SoColorMaskElement::initClass();
     SoGLColorMaskElement::initClass();
@@ -246,13 +258,13 @@ void InventorEx::run(const std::string& funcName)
         }
         std::string additionalInput;
         std::getline(std::cin, additionalInput);
-        for (auto it = matches.begin(); it != matches.end();) 
+        for (auto it = matches.begin(); it != matches.end();)
         {
             if (-1 == it->find(additionalInput))
             {
                 it = matches.erase(it);
             }
-            else 
+            else
             {
                 ++it;
             }
@@ -369,11 +381,12 @@ void InventorEx::globalFlds()
     // Add a material node with a red color to the scene graph
     SoMaterial* myMaterial = new SoMaterial;
     myMaterial->diffuseColor.setValue(1.0, 0.0, 0.0); // Red
+    myMaterial->transparency = 0.5;
     time1->addChild(myMaterial);
 
     // Create a Text3 object, and connect to the realTime field
-    SoText3* myText = new SoText3;
-    //SoText2* myText = new SoText2;
+    //SoText3* myText = new SoText3;
+    SoText2* myText = new SoText2;
     time1->addChild(myText);
     myText->string.connectFrom(SoDB::getGlobalField("realTime"));
     //SoElapsedTime* myCounter = new SoElapsedTime;
@@ -387,6 +400,7 @@ void InventorEx::globalFlds()
     time2->addChild(drawStyle);
     SoMaterial* myMaterial2 = new SoMaterial;
     myMaterial2->diffuseColor.setValue(1.0, 1.0, 0.0);
+    myMaterial2->transparency = 0.5;
     time2->addChild(myMaterial2);
     time2->addChild(myText);
 
@@ -667,6 +681,13 @@ void InventorEx::indexedFaceSet()
         {.7, .7, 0}, {.0, 1.0, .0}, {0, .7, .7}, {1.0, .0, 0}
     };
 
+    float transp[12] = {
+    0.0f, 0.1f, 0.2f, 0.3f,
+    0.4f, 0.5f, 0.6f, 0.7f,
+    0.8f, 0.9f, 1.0f, 1.0f
+    };
+
+
 #ifdef IV_STRICT
     // This is the preferred code for Inventor 2.1
 
@@ -696,6 +717,7 @@ void InventorEx::indexedFaceSet()
     // Define colors for the faces
     SoMaterial* myMaterials = new SoMaterial;
     myMaterials->diffuseColor.setValues(0, 12, colors);
+    myMaterials->transparency.setValues(0, 12, transp);
     m_root->addChild(myMaterials);
     SoMaterialBinding* myMaterialBinding = new SoMaterialBinding;
     myMaterialBinding->value = SoMaterialBinding::PER_FACE;
@@ -851,12 +873,14 @@ void InventorEx::cubeFront(SoSeparator* root)
 
 void InventorEx::twoCube()
 {
+    SoExtSelection* extSelection = new SoExtSelection;
+    m_root->addChild(extSelection);
     // shape
-    cubeBehind(m_root);
+    cubeBehind(extSelection);
     SoMaterial* faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
     faceMaterial->diffuseColor.setValue(1.0, 1.0, 0.0);
     faceMaterial->transparency = 0.0;
-    cubeFront(m_root);
+    cubeFront(extSelection);
     faceMaterial = (SoMaterial*)SoNode::getByName(SbName("FaceMaterial"));
     faceMaterial->diffuseColor.setValue(0.0, 1.0, 1.0);
     faceMaterial->transparency = 0.0;
@@ -1111,32 +1135,32 @@ void drawAxisCross(void)
         float val[3] = { xpos[2], ypos[2], zpos[2] };
 
         // Bubble sort.. :-}
-        if (val[0] < val[1]) 
-        { 
-            CoinSwap(val[0], val[1]); CoinSwap(idx[0], idx[1]); 
+        if (val[0] < val[1])
+        {
+            CoinSwap(val[0], val[1]); CoinSwap(idx[0], idx[1]);
         }
-        if (val[1] < val[2]) 
-        { 
-            CoinSwap(val[1], val[2]); CoinSwap(idx[1], idx[2]); 
+        if (val[1] < val[2])
+        {
+            CoinSwap(val[1], val[2]); CoinSwap(idx[1], idx[2]);
         }
-        if (val[0] < val[1]) 
-        { 
-            CoinSwap(val[0], val[1]); CoinSwap(idx[0], idx[1]); 
+        if (val[0] < val[1])
+        {
+            CoinSwap(val[0], val[1]); CoinSwap(idx[0], idx[1]);
         }
 
-        for (int i = 0; i < 3; i++) 
+        for (int i = 0; i < 3; i++)
         {
             glPushMatrix();
-            if (idx[i] == XAXIS) 
+            if (idx[i] == XAXIS)
             {                       // X axis.
                 glColor3f(0.500f, 0.125f, 0.125f);
             }
-            else if (idx[i] == YAXIS) 
+            else if (idx[i] == YAXIS)
             {                // Y axis.
                 glRotatef(90, 0, 0, 1);
                 glColor3f(0.125f, 0.500f, 0.125f);
             }
-            else 
+            else
             {                                     // Z axis.
                 glRotatef(-90, 0, 1, 0);
                 glColor3f(0.125f, 0.125f, 0.500f);
@@ -1186,9 +1210,9 @@ void InventorEx::buildFloor()
 {
     int a = 0;
 
-    for (float i = -5.0; i <= 5.0; i += 1.25) 
+    for (float i = -5.0; i <= 5.0; i += 1.25)
     {
-        for (float j = -5.0; j <= 5.0; j += 1.25, a++) 
+        for (float j = -5.0; j <= 5.0; j += 1.25, a++)
         {
             floorObj[a][0] = j;
             floorObj[a][1] = 0.0;
@@ -1203,7 +1227,7 @@ void drawFloor()
     int i;
 
     glBegin(GL_LINES);
-    for (i = 0; i < 4; i++) 
+    for (i = 0; i < 4; i++)
     {
         glVertex3fv(floorObj[i * 18]);
         glVertex3fv(floorObj[(i * 18) + 8]);
@@ -1216,7 +1240,7 @@ void drawFloor()
     glEnd();
 
     glBegin(GL_LINES);
-    for (i = 0; i < 4; i++) 
+    for (i = 0; i < 4; i++)
     {
         glVertex3fv(floorObj[i * 2]);
         glVertex3fv(floorObj[(i * 2) + 72]);
@@ -1306,18 +1330,18 @@ void InventorEx::glCallback()
 
 SO_NODE_SOURCE(SoOITNode);
 
-SoOITNode::SoOITNode() 
+SoOITNode::SoOITNode()
 {
     SO_NODE_CONSTRUCTOR(SoOITNode);
 }
 
-void SoOITNode::initClass() 
+void SoOITNode::initClass()
 {
     SO_NODE_INIT_CLASS(SoOITNode, SoSeparator, "Separator");
     SO_ENABLE(SoGLRenderAction, SoCacheElement);
 }
 
-void SoOITNode::GLRender(SoGLRenderAction* action) 
+void SoOITNode::GLRender(SoGLRenderAction* action)
 {
     // 1. 绑定 OIT 资源 (例如头指针纹理，片段列表缓冲区等)
 
@@ -1343,7 +1367,7 @@ void SoOITNode::GLRender(SoGLRenderAction* action)
     lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
 }
 
-void SoOITNode::GLRenderBelowPath(SoGLRenderAction* action) 
+void SoOITNode::GLRenderBelowPath(SoGLRenderAction* action)
 {
     this->GLRender(action);
     SoSeparator::GLRenderBelowPath(action);
@@ -1798,36 +1822,36 @@ bodySwitch
 SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
 {
     CREATE_NODE(SoSwitch, bodySwitch)
-    CREATE_NODE(SoSeparator, body)
-    CREATE_NODE(SoScale, scale)
-    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
-    CREATE_NODE(SoTransparencyType, trasparencyType)
-    CREATE_NODE(SoSeparator, dataNode)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoSwitch, renderModeSwitch)
-    CREATE_NODE(SoSeparator, shadeWithEdge)
-    CREATE_NODE(SoSeparator, shadeWithoutEdge)
-    CREATE_NODE(SoSeparator, transluency)
-    CREATE_NODE(SoSeparator, staticWireframe)
-    CREATE_NODE(SoSeparator, wireframeWithoutHidden)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoMaterial, faceMaterial)
-    CREATE_NODE(SoColorMask, colorMask)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
-    CREATE_NODE(SoDeferredRender, lineRoot)
-    CREATE_NODE(SoSeparator, lineVisibleRoot)
-    CREATE_NODE(SoMaterial, lineVisibleMaterial)
-    CREATE_NODE(SoSwitch, lineHiddenSwitch)
-    CREATE_NODE(SoSeparator, lineHiddenRoot)
-    CREATE_NODE(SoMaterial, lineHiddenMaterial)
-    CREATE_NODE(SoDepthBuffer, depthbuffer)
-    CREATE_NODE(SoSwitch, wireStyleSwitch)
-    CREATE_NODE(SoDrawStyle, dashedLinestyle)
-    CREATE_NODE(SoBaseColor, dimColor)
-    CREATE_NODE(SoIndexedLineSet, lineSet)
+        CREATE_NODE(SoSeparator, body)
+        CREATE_NODE(SoScale, scale)
+        CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+        CREATE_NODE(SoTransparencyType, trasparencyType)
+        CREATE_NODE(SoSeparator, dataNode)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoSwitch, renderModeSwitch)
+        CREATE_NODE(SoSeparator, shadeWithEdge)
+        CREATE_NODE(SoSeparator, shadeWithoutEdge)
+        CREATE_NODE(SoSeparator, transluency)
+        CREATE_NODE(SoSeparator, staticWireframe)
+        CREATE_NODE(SoSeparator, wireframeWithoutHidden)
+        CREATE_NODE(SoPolygonOffset, polygonOffset)
+        CREATE_NODE(SoSeparator, faceRoot)
+        CREATE_NODE(SoMaterial, faceMaterial)
+        CREATE_NODE(SoColorMask, colorMask)
+        CREATE_NODE(SoIndexedFaceSet, faceSet)
+        CREATE_NODE(SoDeferredRender, lineRoot)
+        CREATE_NODE(SoSeparator, lineVisibleRoot)
+        CREATE_NODE(SoMaterial, lineVisibleMaterial)
+        CREATE_NODE(SoSwitch, lineHiddenSwitch)
+        CREATE_NODE(SoSeparator, lineHiddenRoot)
+        CREATE_NODE(SoMaterial, lineHiddenMaterial)
+        CREATE_NODE(SoDepthBuffer, depthbuffer)
+        CREATE_NODE(SoSwitch, wireStyleSwitch)
+        CREATE_NODE(SoDrawStyle, dashedLinestyle)
+        CREATE_NODE(SoBaseColor, dimColor)
+        CREATE_NODE(SoIndexedLineSet, lineSet)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships = 
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {bodySwitch, body},
         {body, scale},
@@ -1860,7 +1884,7 @@ SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
         {wireStyleSwitch, dimColor},
         {lineHiddenRoot, lineSet},
     };
-    for (const auto& relationship : relationships) 
+    for (const auto& relationship : relationships)
     {
         ADD_CHILD(relationship.first, relationship.second);
     }
@@ -1914,14 +1938,14 @@ void InventorEx::wireframe()
     std::vector<ShapeData> randomCuboids = generateRandomCuboids(CUBECOUNT/*count*/, 5.0/*size*/);
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
-    CREATE_NODE(SoSeparator, secondPassSeparator)
-    CREATE_NODE(SoSeparator, bodies)
-    CREATE_NODE(SoSwitchToChild, switchToFacet)
-    CREATE_NODE(SoSwitchToChild, switchToEdge)
-    CREATE_NODE(SoColorMask, colorMask)
-    CREATE_NODE(SoLightModel, lightModel)
+        CREATE_NODE(SoSeparator, secondPassSeparator)
+        CREATE_NODE(SoSeparator, bodies)
+        CREATE_NODE(SoSwitchToChild, switchToFacet)
+        CREATE_NODE(SoSwitchToChild, switchToEdge)
+        CREATE_NODE(SoColorMask, colorMask)
+        CREATE_NODE(SoLightModel, lightModel)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         //{m_root, new SoGradientBackground},
         {m_root, bodies},
@@ -1930,7 +1954,7 @@ void InventorEx::wireframe()
     {
         ADD_CHILD(relationship.first, relationship.second);
     }
-    for (const auto& data : randomCuboids) 
+    for (const auto& data : randomCuboids)
     {
         ADD_CHILD(bodies, assembleBodyScene(data));
     }
@@ -1995,40 +2019,40 @@ bodySwitch
 SoSwitch* InventorEx::assembleBodyScene(const ShapeData& data)
 {
     CREATE_NODE(SoSwitch, bodySwitch)
-    CREATE_NODE(SoSeparator, body)
-    CREATE_NODE(SoScale, scale)
-    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
-    CREATE_NODE(SoTransparencyType, trasparencyType)
-    CREATE_NODE(SoSeparator, dataNode)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoSwitch, renderModeSwitch)
-    CREATE_NODE(SoSeparator, shadeWithEdge)
-    CREATE_NODE(SoSeparator, shadeWithoutEdge)
-    CREATE_NODE(SoSeparator, transluency)
-    CREATE_NODE(SoSeparator, staticWireframe)
-    CREATE_NODE(SoSeparator, wireframeWithoutHidden)
-    CREATE_NODE(SoSwitch, frameSwitch)
-    CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoDrawStyle, faceStyle)
-    CREATE_NODE(SoNormal, faceNormal)
-    CREATE_NODE(SoNormalBinding, normalBinding)
-    CREATE_NODE(SoSwitch, materialSwitch)
-    CREATE_NODE(SoMaterial, transparentMaterial)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
-    CREATE_NODE(SoSeparator, lineRoot)
-    CREATE_NODE(SoSeparator, lineVisibleRoot)
-    CREATE_NODE(SoMaterial, lineVisibleMaterial)
-    CREATE_NODE(SoSwitch, lineHiddenSwitch)
-    CREATE_NODE(SoSeparator, lineHiddenRoot)
-    CREATE_NODE(SoColorMask, colorMask)
-    CREATE_NODE(SoDepthBuffer, depthbuffer)
-    CREATE_NODE(SoSwitch, wireStyleSwitch)
-    CREATE_NODE(SoDrawStyle, dashedLinestyle)
-    CREATE_NODE(SoBaseColor, dimColor)
-    CREATE_NODE(SoIndexedLineSet, lineSet)
+        CREATE_NODE(SoSeparator, body)
+        CREATE_NODE(SoScale, scale)
+        CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+        CREATE_NODE(SoTransparencyType, trasparencyType)
+        CREATE_NODE(SoSeparator, dataNode)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoSwitch, renderModeSwitch)
+        CREATE_NODE(SoSeparator, shadeWithEdge)
+        CREATE_NODE(SoSeparator, shadeWithoutEdge)
+        CREATE_NODE(SoSeparator, transluency)
+        CREATE_NODE(SoSeparator, staticWireframe)
+        CREATE_NODE(SoSeparator, wireframeWithoutHidden)
+        CREATE_NODE(SoSwitch, frameSwitch)
+        CREATE_NODE(SoSeparator, faceRoot)
+        CREATE_NODE(SoPolygonOffset, polygonOffset)
+        CREATE_NODE(SoDrawStyle, faceStyle)
+        CREATE_NODE(SoNormal, faceNormal)
+        CREATE_NODE(SoNormalBinding, normalBinding)
+        CREATE_NODE(SoSwitch, materialSwitch)
+        CREATE_NODE(SoMaterial, transparentMaterial)
+        CREATE_NODE(SoIndexedFaceSet, faceSet)
+        CREATE_NODE(SoSeparator, lineRoot)
+        CREATE_NODE(SoSeparator, lineVisibleRoot)
+        CREATE_NODE(SoMaterial, lineVisibleMaterial)
+        CREATE_NODE(SoSwitch, lineHiddenSwitch)
+        CREATE_NODE(SoSeparator, lineHiddenRoot)
+        CREATE_NODE(SoColorMask, colorMask)
+        CREATE_NODE(SoDepthBuffer, depthbuffer)
+        CREATE_NODE(SoSwitch, wireStyleSwitch)
+        CREATE_NODE(SoDrawStyle, dashedLinestyle)
+        CREATE_NODE(SoBaseColor, dimColor)
+        CREATE_NODE(SoIndexedLineSet, lineSet)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {bodySwitch, body},
         {body, scale},
@@ -2115,14 +2139,14 @@ void InventorEx::wireframe()
     std::vector<ShapeData> randomCuboids = generateRandomCuboids(CUBECOUNT/*count*/, 5.0/*size*/);
 
     CREATE_NODE(SoSeparator, firstPassSeparator)
-    CREATE_NODE(SoSeparator, secondPassSeparator)
-    CREATE_NODE(SoSeparator, bodies)
-    CREATE_NODE(SoSwitchToChild, switchToFacet)
-    CREATE_NODE(SoSwitchToChild, switchToEdge)
-    CREATE_NODE(SoColorMask, colorMask)
-    CREATE_NODE(SoLightModel, lightModel)
+        CREATE_NODE(SoSeparator, secondPassSeparator)
+        CREATE_NODE(SoSeparator, bodies)
+        CREATE_NODE(SoSwitchToChild, switchToFacet)
+        CREATE_NODE(SoSwitchToChild, switchToEdge)
+        CREATE_NODE(SoColorMask, colorMask)
+        CREATE_NODE(SoLightModel, lightModel)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         //{m_root, new SoGradientBackground},
         {m_root, firstPassSeparator},
@@ -2182,14 +2206,14 @@ void InventorEx::wireframe()
 void InventorEx::pointInCube()
 {
     CREATE_NODE(SoSeparator, separator)
-    CREATE_NODE(SoCube, cube)
-    CREATE_NODE(/*SoCube*/SoSphere, point)
-    CREATE_NODE(SoMaterial, material)
-    CREATE_NODE(SoDepthBuffer, depthbuffer)
-    CREATE_NODE(SoLightModel, lightModel)
-    CREATE_NODE(SoShapeHints, shapeHints)
+        CREATE_NODE(SoCube, cube)
+        CREATE_NODE(/*SoCube*/SoSphere, point)
+        CREATE_NODE(SoMaterial, material)
+        CREATE_NODE(SoDepthBuffer, depthbuffer)
+        CREATE_NODE(SoLightModel, lightModel)
+        CREATE_NODE(SoShapeHints, shapeHints)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         //{m_root, cube},
         {m_root, separator},
@@ -2228,15 +2252,15 @@ void InventorEx::pointInCube()
 void InventorEx::showRotationCenter()
 {
     CREATE_NODE(SoSeparator, separator)
-    CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoSphere, point)
-    CREATE_NODE(SoDepthBuffer, depthBuffer)
-    CREATE_NODE(SoComplexity, complexity)
-    CREATE_NODE(SoMaterial, material)
-    CREATE_NODE(SoLightModel, lightModel)
-    CREATE_NODE(SoShapeHints, shapeHints)
+        CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoSphere, point)
+        CREATE_NODE(SoDepthBuffer, depthBuffer)
+        CREATE_NODE(SoComplexity, complexity)
+        CREATE_NODE(SoMaterial, material)
+        CREATE_NODE(SoLightModel, lightModel)
+        CREATE_NODE(SoShapeHints, shapeHints)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, cube},
         {m_root, separator},
@@ -2270,12 +2294,12 @@ void InventorEx::showRotationCenter()
 void InventorEx::colorMaskTest()
 {
     CREATE_NODE(SoSeparator, sep)
-    CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoSphere, sphere)
-    CREATE_NODE(SoCone, cone)
-    CREATE_NODE(SoColorMask, colorMask)
+        CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoSphere, sphere)
+        CREATE_NODE(SoCone, cone)
+        CREATE_NODE(SoColorMask, colorMask)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, sep},
         {m_root, sphere},
@@ -2305,9 +2329,9 @@ void InventorEx::colorMaskTest()
 void InventorEx::cylinder()
 {
     CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoCylinder, cylinder)
+        CREATE_NODE(SoCylinder, cylinder)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, shapeHints},
         {m_root, cylinder},
@@ -2326,9 +2350,9 @@ void InventorEx::cylinder()
 
 }
 
-void glClearDepthBuffer(void* userdata, SoAction* action) 
+void glClearDepthBuffer(void* userdata, SoAction* action)
 {
-    if (action->isOfType(SoGLRenderAction::getClassTypeId())) 
+    if (action->isOfType(SoGLRenderAction::getClassTypeId()))
     {
         glClear(GL_DEPTH_BUFFER_BIT);
     }
@@ -2337,20 +2361,20 @@ void glClearDepthBuffer(void* userdata, SoAction* action)
 void InventorEx::previewPointForward()
 {
     CREATE_NODE(SoSeparator, separator)
-    CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoCube, point)
-    CREATE_NODE(SoMaterial, material)
-    CREATE_NODE(SoCallback, cleanDepthBuffCB)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoAnnotation, annotation)
-    CREATE_NODE(SoComplexity, complexity)
-    CREATE_NODE(SoDepthBuffer, depthBuffer)
-    CREATE_NODE(SoDepthBuffer, depthBufferOver)
-    CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoDeferredRender, defferedRender)
+        CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoCube, point)
+        CREATE_NODE(SoMaterial, material)
+        CREATE_NODE(SoCallback, cleanDepthBuffCB)
+        CREATE_NODE(SoPolygonOffset, polygonOffset)
+        CREATE_NODE(SoAnnotation, annotation)
+        CREATE_NODE(SoComplexity, complexity)
+        CREATE_NODE(SoDepthBuffer, depthBuffer)
+        CREATE_NODE(SoDepthBuffer, depthBufferOver)
+        CREATE_NODE(SoShapeHints, shapeHints)
+        CREATE_NODE(SoDeferredRender, defferedRender)
 
-    
-    int method = 0;
+
+        int method = 0;
     float factor = 0.0f;
     float units = 0.0f;
     std::cout << "0 for cleanDepthBuffer  1 for depthRange  2 for Annotation  3 for Two-sided Lighting  4 for Deffed Render" << std::endl;
@@ -2365,7 +2389,7 @@ void InventorEx::previewPointForward()
         separator->addChild(cleanDepthBuffCB);
         separator->addChild(point);
         cleanDepthBuffCB->setCallback(glClearDepthBuffer);
-    	break;
+        break;
     case 1:
         m_root->addChild(depthBuffer);
         m_root->addChild(cube);
@@ -2465,7 +2489,7 @@ void InventorEx::twoSideFace()
     std::cout << "背面剔除 ON?: " << std::endl;
     bool option = false;
     std::cin >> option;
-    if (option) 
+    if (option)
     {
         shapeHints->shapeType = SoShapeHints::SOLID;
         shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
@@ -2539,18 +2563,18 @@ void InventorEx::deferredRender()
 
 
     CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoDeferredRender, firstFloor)
-    CREATE_NODE(SoDeferredRender, secondFloor)
-    CREATE_NODE(SoMaterial, redMaterial)
-    CREATE_NODE(SoMaterial, blueMaterial)
-    CREATE_NODE(SoTranslation, translation)
-    CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoCube, littleCube)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoIndexedFaceSet, lens)
+        CREATE_NODE(SoDeferredRender, firstFloor)
+        CREATE_NODE(SoDeferredRender, secondFloor)
+        CREATE_NODE(SoMaterial, redMaterial)
+        CREATE_NODE(SoMaterial, blueMaterial)
+        CREATE_NODE(SoTranslation, translation)
+        CREATE_NODE(SoMaterial, secondFloorMaterial)
+        CREATE_NODE(SoCube, littleCube)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoShapeHints, shapeHints)
+        CREATE_NODE(SoIndexedFaceSet, lens)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, cube},
         {m_root, firstFloor},
@@ -2623,20 +2647,20 @@ void InventorEx::flat()
     };
 
     CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoDeferredRender, firstFloor)
-    CREATE_NODE(SoDeferredRender, secondFloor)
-    CREATE_NODE(SoSeparator, redFace)
-    CREATE_NODE(SoSeparator, greenFace)
-    CREATE_NODE(SoMaterial, redMaterial)
-    CREATE_NODE(SoMaterial, greenMaterial)
-    CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoTranslation, redTranslation)
-    CREATE_NODE(SoTranslation, greenTranslation)
-    CREATE_NODE(SoTranslation, secondFloorTranslation)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoIndexedFaceSet, face)
+        CREATE_NODE(SoDeferredRender, firstFloor)
+        CREATE_NODE(SoDeferredRender, secondFloor)
+        CREATE_NODE(SoSeparator, redFace)
+        CREATE_NODE(SoSeparator, greenFace)
+        CREATE_NODE(SoMaterial, redMaterial)
+        CREATE_NODE(SoMaterial, greenMaterial)
+        CREATE_NODE(SoMaterial, secondFloorMaterial)
+        CREATE_NODE(SoTranslation, redTranslation)
+        CREATE_NODE(SoTranslation, greenTranslation)
+        CREATE_NODE(SoTranslation, secondFloorTranslation)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoIndexedFaceSet, face)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, coords},
         {m_root, shapeHints},
@@ -2696,15 +2720,15 @@ void InventorEx::switchToPathTraversal()
     // figure out how to store and restore state
 
     CREATE_NODE(SoSeparator, sep1)
-    CREATE_NODE(SoMaterial, material1)
-    CREATE_NODE(SoSphere, sphere)
-    CREATE_NODE(SoSeparator, sepAdd)
-    CREATE_NODE(SoSeparator, sep2)
-    CREATE_NODE(SoMaterial, material2)
-    CREATE_NODE(SoTranslation, trans)
-    CREATE_NODE(SoCallback, cb)
+        CREATE_NODE(SoMaterial, material1)
+        CREATE_NODE(SoSphere, sphere)
+        CREATE_NODE(SoSeparator, sepAdd)
+        CREATE_NODE(SoSeparator, sep2)
+        CREATE_NODE(SoMaterial, material2)
+        CREATE_NODE(SoTranslation, trans)
+        CREATE_NODE(SoCallback, cb)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         //{m_root, sep1},
         {m_root, sep2},
@@ -2758,7 +2782,7 @@ static void renderAuxViewport(void* userdata, SoAction* action)
 
     // 设置OpenGL视口到窗口的右下角
     glViewport((GLint)(0.7 * windowWidth), 0,
-        (GLsizei)(0.3 * windowWidth), (GLsizei)(0.3 * windowHeight));
+               (GLsizei)(0.3 * windowWidth), (GLsizei)(0.3 * windowHeight));
 
 
     // 从当前的action状态中获取相机矩阵
@@ -2924,17 +2948,17 @@ void InventorEx::actStateOfDelayList()
     };
 
     CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoDeferredRender, firstFloor)
-    CREATE_NODE(SoDeferredRender, secondFloor)
-    CREATE_NODE(SoMaterial, firstFloorMaterial)
-    CREATE_NODE(SoMaterial, firstFloorMaterialPlus)
-    CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoTranslation, firstFloorTranslation)
-    CREATE_NODE(SoTranslation, secondFloorTranslation)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoIndexedFaceSet, face)
+        CREATE_NODE(SoDeferredRender, firstFloor)
+        CREATE_NODE(SoDeferredRender, secondFloor)
+        CREATE_NODE(SoMaterial, firstFloorMaterial)
+        CREATE_NODE(SoMaterial, firstFloorMaterialPlus)
+        CREATE_NODE(SoMaterial, secondFloorMaterial)
+        CREATE_NODE(SoTranslation, firstFloorTranslation)
+        CREATE_NODE(SoTranslation, secondFloorTranslation)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoIndexedFaceSet, face)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, coords},
         {m_root, shapeHints},
@@ -2986,9 +3010,9 @@ SoSeparator* InventorEx::assembleEasyBody(const ShapeData& data, bool usePath)
         face = new SoSeparator;
 
     CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
+        CREATE_NODE(SoIndexedFaceSet, faceSet)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {face, coords},
         {face, faceSet},
@@ -3007,25 +3031,25 @@ SoSeparator* InventorEx::assembleEasyBody(const ShapeData& data, bool usePath)
 SoSeparator* InventorEx::usePathAssemble(std::vector<ShapeData> randomCuboids, bool usePath)
 {
     CREATE_NODE(SoSeparator, bodies)
-    CREATE_NODE(SoScale, scale)
-    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
-    CREATE_NODE(SoTransparencyType, trasparencyType)
-    CREATE_NODE(SoSeparator, dataNode)
-    CREATE_NODE(SoSwitch, renderModeSwitch)
-    CREATE_NODE(SoSeparator, shadeWithEdge)
-    CREATE_NODE(SoSeparator, shadeWithoutEdge)
-    CREATE_NODE(SoSeparator, transluency)
-    CREATE_NODE(SoSeparator, staticWireframe)
-    CREATE_NODE(SoSeparator, wireframeWithoutHidden)
-    CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoDrawStyle, faceStyle)
-    CREATE_NODE(SoNormal, faceNormal)
-    CREATE_NODE(SoNormalBinding, normalBinding)
-    CREATE_NODE(SoSwitch, materialSwitch)
-    CREATE_NODE(SoMaterial, transparentMaterial)
+        CREATE_NODE(SoScale, scale)
+        CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+        CREATE_NODE(SoTransparencyType, trasparencyType)
+        CREATE_NODE(SoSeparator, dataNode)
+        CREATE_NODE(SoSwitch, renderModeSwitch)
+        CREATE_NODE(SoSeparator, shadeWithEdge)
+        CREATE_NODE(SoSeparator, shadeWithoutEdge)
+        CREATE_NODE(SoSeparator, transluency)
+        CREATE_NODE(SoSeparator, staticWireframe)
+        CREATE_NODE(SoSeparator, wireframeWithoutHidden)
+        CREATE_NODE(SoSeparator, faceRoot)
+        CREATE_NODE(SoPolygonOffset, polygonOffset)
+        CREATE_NODE(SoDrawStyle, faceStyle)
+        CREATE_NODE(SoNormal, faceNormal)
+        CREATE_NODE(SoNormalBinding, normalBinding)
+        CREATE_NODE(SoSwitch, materialSwitch)
+        CREATE_NODE(SoMaterial, transparentMaterial)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {bodies, scale},
         {bodies, trasparencyTypeSwitch},
@@ -3096,18 +3120,18 @@ void InventorEx::isDelayRenderNessery()
     };
 
     CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
-    CREATE_NODE(SoTranslation, translation)
-    CREATE_NODE(SoSeparator, redTransFace)
-    CREATE_NODE(SoSeparator, greenFace)
-    CREATE_NODE(SoSeparator, blueTransFace)
-    CREATE_NODE(SoMaterial, redMaterial)
-    CREATE_NODE(SoMaterial, greenMaterial)
-    CREATE_NODE(SoMaterial, blueMaterial)
-    CREATE_NODE(SoCallback, cb)
+        CREATE_NODE(SoShapeHints, shapeHints)
+        CREATE_NODE(SoIndexedFaceSet, faceSet)
+        CREATE_NODE(SoTranslation, translation)
+        CREATE_NODE(SoSeparator, redTransFace)
+        CREATE_NODE(SoSeparator, greenFace)
+        CREATE_NODE(SoSeparator, blueTransFace)
+        CREATE_NODE(SoMaterial, redMaterial)
+        CREATE_NODE(SoMaterial, greenMaterial)
+        CREATE_NODE(SoMaterial, blueMaterial)
+        CREATE_NODE(SoCallback, cb)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, coords},
         {m_root, shapeHints},
@@ -3163,11 +3187,11 @@ void InventorEx::twoSideLightInDelayRender()
     };
 
     CREATE_NODE(SoDeferredRender, deferredRender)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoShapeHints, shapeHints)
+        CREATE_NODE(SoIndexedFaceSet, faceSet)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, deferredRender},
         {deferredRender, coords},
@@ -3284,24 +3308,24 @@ void InventorEx::depthRange()
     };
 
     CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoSeparator, firstFloor)
-    CREATE_NODE(SoSeparator, secondFloor)
-    CREATE_NODE(SoSeparator, redFace)
-    CREATE_NODE(SoSeparator, greenFace)
-    CREATE_NODE(SoMaterial, redMaterial)
-    CREATE_NODE(SoMaterial, greenMaterial)
-    CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoTranslation, redTranslation)
-    CREATE_NODE(SoTranslation, greenTranslation)
-    CREATE_NODE(SoTranslation, secondFloorTranslation)
-    CREATE_NODE(SoDepthBuffer, groudFloorDepthBuffer);
+        CREATE_NODE(SoSeparator, firstFloor)
+        CREATE_NODE(SoSeparator, secondFloor)
+        CREATE_NODE(SoSeparator, redFace)
+        CREATE_NODE(SoSeparator, greenFace)
+        CREATE_NODE(SoMaterial, redMaterial)
+        CREATE_NODE(SoMaterial, greenMaterial)
+        CREATE_NODE(SoMaterial, secondFloorMaterial)
+        CREATE_NODE(SoTranslation, redTranslation)
+        CREATE_NODE(SoTranslation, greenTranslation)
+        CREATE_NODE(SoTranslation, secondFloorTranslation)
+        CREATE_NODE(SoDepthBuffer, groudFloorDepthBuffer);
     CREATE_NODE(SoDepthBuffer, firstFloorDepthBuffer);
     CREATE_NODE(SoDepthBuffer, secondFloorDepthBuffer);
     CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoIndexedFaceSet, face)
-    CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoIndexedFaceSet, face)
+        CREATE_NODE(SoCube, cube)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, coords},
         {m_root, shapeHints},
@@ -3392,21 +3416,21 @@ void InventorEx::depthConflict()
     };
 
     CREATE_NODE(SoShapeHints, shapeHints)
-    CREATE_NODE(SoSeparator, firstFloor)
-    CREATE_NODE(SoSeparator, secondFloor)
-    CREATE_NODE(SoSeparator, redFace)
-    CREATE_NODE(SoSeparator, greenFace)
-    CREATE_NODE(SoMaterial, redMaterial)
-    CREATE_NODE(SoMaterial, greenMaterial)
-    CREATE_NODE(SoMaterial, secondFloorMaterial)
-    CREATE_NODE(SoTranslation, redTranslation)
-    CREATE_NODE(SoTranslation, greenTranslation)
-    CREATE_NODE(SoTranslation, secondFloorTranslation)
-    CREATE_NODE(SoDepthBuffer, groudFloorDepthBuffer);
+        CREATE_NODE(SoSeparator, firstFloor)
+        CREATE_NODE(SoSeparator, secondFloor)
+        CREATE_NODE(SoSeparator, redFace)
+        CREATE_NODE(SoSeparator, greenFace)
+        CREATE_NODE(SoMaterial, redMaterial)
+        CREATE_NODE(SoMaterial, greenMaterial)
+        CREATE_NODE(SoMaterial, secondFloorMaterial)
+        CREATE_NODE(SoTranslation, redTranslation)
+        CREATE_NODE(SoTranslation, greenTranslation)
+        CREATE_NODE(SoTranslation, secondFloorTranslation)
+        CREATE_NODE(SoDepthBuffer, groudFloorDepthBuffer);
     CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoIndexedFaceSet, face)
+        CREATE_NODE(SoIndexedFaceSet, face)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {m_root, coords},
         {m_root, shapeHints},
@@ -3735,7 +3759,7 @@ void glTwoSideFace(void*, SoAction* action)
     }
 }
 
-void InventorEx::glTwoSide() 
+void InventorEx::glTwoSide()
 {
     SoCallback* cb = new SoCallback;
     cb->setCallback(glTwoSideFace);
@@ -3789,21 +3813,21 @@ void InventorEx::staticWireframe()
     };
 
     CREATE_NODE(SoSeparator, m_root)
-    CREATE_NODE(SoSeparator, staticWireframe)
-    CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoSeparator, lineRoot)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoTransparencyType, transType)
-    CREATE_NODE(SoDrawStyle, faceDrawStyle)
-    CREATE_NODE(SoDrawStyle, lineDrawStyle)
-    CREATE_NODE(SoMaterial, faceMaterial)
-    CREATE_NODE(SoMaterial, lineMaterial)
-    CREATE_NODE(SoIndexedFaceSet, faces)
-    CREATE_NODE(SoIndexedLineSet, lines)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
+        CREATE_NODE(SoSeparator, staticWireframe)
+        CREATE_NODE(SoSeparator, faceRoot)
+        CREATE_NODE(SoSeparator, lineRoot)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoTransparencyType, transType)
+        CREATE_NODE(SoDrawStyle, faceDrawStyle)
+        CREATE_NODE(SoDrawStyle, lineDrawStyle)
+        CREATE_NODE(SoMaterial, faceMaterial)
+        CREATE_NODE(SoMaterial, lineMaterial)
+        CREATE_NODE(SoIndexedFaceSet, faces)
+        CREATE_NODE(SoIndexedLineSet, lines)
+        CREATE_NODE(SoPolygonOffset, polygonOffset)
 
         // 添加子节点
-    m_root->addChild(transType);
+        m_root->addChild(transType);
     m_root->addChild(coords);
     m_root->addChild(staticWireframe);
 
@@ -3893,7 +3917,7 @@ void InventorEx::removeAllChildren()
 
 
 QImage g_img;
-void glReadPixelsCallback(void*, SoAction* action) 
+void glReadPixelsCallback(void*, SoAction* action)
 {
     if (action->isOfType(SoGLRenderAction::getClassTypeId()))
     {
@@ -4094,22 +4118,22 @@ void InventorEx::fitPlane()
 SoSwitch* InventorEx::assembleBodySceneShader(const ShapeData& data)
 {
     CREATE_NODE(SoSwitch, bodySwitch)
-    CREATE_NODE(SoSeparator, body)
-    CREATE_NODE(SoScale, scale)
-    CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
-    CREATE_NODE(SoTransparencyType, trasparencyType)
-    CREATE_NODE(SoSeparator, dataNode)
-    CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoSwitch, renderModeSwitch)
-    CREATE_NODE(SoSeparator, shadeWithEdge)
-    CREATE_NODE(SoPolygonOffset, polygonOffset)
-    CREATE_NODE(SoSeparator, faceRoot)
-    CREATE_NODE(SoMaterial, faceMaterial)
-    CREATE_NODE(SoIndexedFaceSet, faceSet)
-    CREATE_NODE(SoSeparator, lineRoot)
-    CREATE_NODE(SoIndexedLineSet, lineSet)
+        CREATE_NODE(SoSeparator, body)
+        CREATE_NODE(SoScale, scale)
+        CREATE_NODE(SoSwitch, trasparencyTypeSwitch)
+        CREATE_NODE(SoTransparencyType, trasparencyType)
+        CREATE_NODE(SoSeparator, dataNode)
+        CREATE_NODE(SoCoordinate3, coords)
+        CREATE_NODE(SoSwitch, renderModeSwitch)
+        CREATE_NODE(SoSeparator, shadeWithEdge)
+        CREATE_NODE(SoPolygonOffset, polygonOffset)
+        CREATE_NODE(SoSeparator, faceRoot)
+        CREATE_NODE(SoMaterial, faceMaterial)
+        CREATE_NODE(SoIndexedFaceSet, faceSet)
+        CREATE_NODE(SoSeparator, lineRoot)
+        CREATE_NODE(SoIndexedLineSet, lineSet)
 
-    std::vector<std::pair<SoGroup*, SoNode*>> relationships =
+        std::vector<std::pair<SoGroup*, SoNode*>> relationships =
     {
         {bodySwitch, body},
         {body, scale},
@@ -4236,30 +4260,30 @@ SoSeparator* InventorEx::assembleSingleBodyScene(const std::vector<ShapeData>& c
 void InventorEx::pointSet()
 {
     CREATE_NODE(SoPointSet, pointSet)
-    ADD_CHILD(m_root, pointSet);
+        ADD_CHILD(m_root, pointSet);
 }
 
 void InventorEx::customPolygonOffset()
 {
-    float pts[2][3] = 
+    float pts[2][3] =
     {
         { 0.0, 0.0, 0.0 },
         { 1.0, 0.0, 0.0 },
     };
 
     CREATE_NODE(SoCoordinate3, coords)
-    CREATE_NODE(SoLineSet, lineSet)
-    CREATE_NODE(SoMaterial, materialRed)
-    CREATE_NODE(SoMaterial, materialYellow)
-    CREATE_NODE(SoCallback, customPolygonOffsetNode)
-    CREATE_NODE(SoCallback, disablePolygonOffsetNode)
+        CREATE_NODE(SoLineSet, lineSet)
+        CREATE_NODE(SoMaterial, materialRed)
+        CREATE_NODE(SoMaterial, materialYellow)
+        CREATE_NODE(SoCallback, customPolygonOffsetNode)
+        CREATE_NODE(SoCallback, disablePolygonOffsetNode)
 
-    ADD_CHILD(m_root, coords);
+        ADD_CHILD(m_root, coords);
     ADD_CHILD(m_root, materialRed);
     ADD_CHILD(m_root, customPolygonOffsetNode);
     ADD_CHILD(m_root, lineSet);
     ADD_CHILD(m_root, disablePolygonOffsetNode)
-    ADD_CHILD(m_root, materialYellow);
+        ADD_CHILD(m_root, materialYellow);
     ADD_CHILD(m_root, lineSet);
 
     materialRed->diffuseColor.setValue(1, 0, 0);
@@ -4274,23 +4298,23 @@ void InventorEx::customPolygonOffset()
             glPolygonOffset(-1.0f, -1.0f);
             glEnable(GL_POLYGON_OFFSET_UNITS);
         }
-    });
+                                         });
 
     disablePolygonOffsetNode->setCallback([](void*, SoAction* action) {
         if (action->isOfType(SoGLRenderAction::getClassTypeId()))
         {
             glDisable(GL_POLYGON_OFFSET_UNITS);
         }
-    });
+                                          });
 }
 
 void InventorEx::lightsTest()
 {
     CREATE_NODE(SoSeparator, lightsRoot)
-    CREATE_NODE(SoDirectionalLight, directionalLight)
-    CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoDirectionalLight, directionalLight)
+        CREATE_NODE(SoCube, cube)
 
-    ADD_CHILD(m_root, lightsRoot);
+        ADD_CHILD(m_root, lightsRoot);
     ADD_CHILD(lightsRoot, directionalLight);
     ADD_CHILD(m_root, cube);
 
@@ -4325,11 +4349,11 @@ void mouseDragCB(void* userData, SoEventCallback* eventCB) {
 void InventorEx::levelOfDetail()
 {
     CREATE_NODE(SoLevelOfDetail, LOD)
-    CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoTranslation, trans)
-    CREATE_NODE(SoEventCallback, eventCB)
+        CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoTranslation, trans)
+        CREATE_NODE(SoEventCallback, eventCB)
 
-    ADD_CHILD(m_root, LOD);
+        ADD_CHILD(m_root, LOD);
     ADD_CHILD(LOD, cube);
     ADD_CHILD(LOD, trans);
     ADD_CHILD(LOD, cube);
@@ -4349,17 +4373,17 @@ void InventorEx::levelOfDetail()
 void InventorEx::OBB()
 {
     CREATE_NODE(SoOrthographicCamera, cam)
-    CREATE_NODE(SoCube, cube)
-    CREATE_NODE(SoTranslation, trans)
-    CREATE_NODE(SoEventCallback, eventCB)
+        CREATE_NODE(SoCube, cube)
+        CREATE_NODE(SoTranslation, trans)
+        CREATE_NODE(SoEventCallback, eventCB)
 
-    ADD_CHILD(m_root, cam);
+        ADD_CHILD(m_root, cam);
     ADD_CHILD(m_root, cube)
-    ADD_CHILD(m_root, trans)
-    ADD_CHILD(m_root, cube)
-    ADD_CHILD(m_root, eventCB)
+        ADD_CHILD(m_root, trans)
+        ADD_CHILD(m_root, cube)
+        ADD_CHILD(m_root, eventCB)
 
-    cam->position.setValue(0.0f, 0.0f, 5.0f);
+        cam->position.setValue(0.0f, 0.0f, 5.0f);
     cam->nearDistance = 2.0f;
     cam->farDistance = 12.0f;
 
@@ -4382,7 +4406,7 @@ void InventorEx::outline()
     // 加粗线框
     SoDrawStyle* drawStyle = new SoDrawStyle;
     drawStyle->style = SoDrawStyleElement::LINES;
-    drawStyle->lineWidth = 4;
+    drawStyle->lineWidth = 2;
     SoLightModel* lightModel = new SoLightModel;
     lightModel->model = SoLightModel::BASE_COLOR;
 
@@ -4445,7 +4469,7 @@ void InventorEx::outline()
             glClearStencil(0);
             glClear(GL_STENCIL_BUFFER_BIT);
         }
-    });
+                             });
 
     SoCallback* stencilWrite = new SoCallback;
     stencilWrite->setCallback([](void*, SoAction* action) {
@@ -4455,7 +4479,7 @@ void InventorEx::outline()
             // Set stencil operation. Increment the stencil buffer value when depth test passes.
             glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
         }
-    });
+                              });
 
     SoCallback* stencilTest = new SoCallback;
     stencilTest->setCallback([](void*, SoAction* action) {
@@ -4464,7 +4488,7 @@ void InventorEx::outline()
             glStencilFunc(GL_EQUAL, 0, 0xFF);
             glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         }
-    });
+                             });
 
     SoCallback* stencilReset = new SoCallback;
     stencilReset->setCallback([](void*, SoAction* action) {
@@ -4473,7 +4497,7 @@ void InventorEx::outline()
             glStencilFunc(GL_ALWAYS, 0, 0xFF);
             glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         }
-    });
+                              });
 
     // 绘制模板
     SoSeparator* stencilWriteSep = new SoSeparator;
@@ -4523,6 +4547,27 @@ void InventorEx::outline()
     // 轮廓线与人为定义的边重合或理论重合时，该怎么处理
     // answer:
     // edge绘制可以反过来进行模板测试=2，但仍会有离散不匹配问题
+
+    // question:
+    // 空心圆柱内侧面边界如何绘制
+    // answer：
+    // NX不支持绘制，导入零件的内侧面边界是内侧实体的外轮廓
+
+    // question:
+    // 其他outline的渲染方式？
+    // answer:
+    // 需要的只有silhouette，其他类型的outline如countour不应该在需求中
+
+    // question:
+    // wireframe模式下的双线
+    // answer:
+    // 中间被模板掉了
+
+    // 有一种解决方式，把silhouette用polygonOffset去写低一个深度，然后edge和silhouette组成的深度缓冲，通过它能判断出哪些位置是圆弧段，像扫雷一样
+    // 不行，离散的不同导致深度上也有很大差别，并不能实现只写低一个深度。不过，如果离散相同，silhouette和edge一定是紧贴着的，这是个可以用来判断的特征
+
+    // 既然lineWeight变粗会使轮廓线外扩，把模板变小是否就可以了（模板能变小吗）？
+    // lineWeight无论如何设置都会超出正常渲染的边界
 }
 
 void InventorEx::outputBuffer()
@@ -4681,4 +4726,478 @@ SoSeparator* gravWellSep(int gridSize/*网格的大小*/, float spacing/*网格的间距*/
     delete[] indices;
 
     return root;
+}
+
+
+void InventorEx::outline2()
+{
+    // 加粗线框
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    drawStyle->style = SoDrawStyleElement::LINES;
+    drawStyle->lineWidth = 2;
+    SoLightModel* lightModel = new SoLightModel;
+    lightModel->model = SoLightModel::BASE_COLOR;
+
+    SoPolygonOffset* polygonOffset = new SoPolygonOffset;
+    polygonOffset->factor = -2.0f;
+    polygonOffset->units = -2.0f;
+
+    SoCallback* glPolygonOffsetCB = new SoCallback;
+    glPolygonOffsetCB->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            glEnable(GL_POLYGON_OFFSET_LINE);
+            glPolygonOffset(2.0f, 2.0f);
+        }
+                                   });
+
+
+    // 禁用写颜色缓冲
+    SoColorMask* colorMask = new SoColorMask;
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+
+    int option = 0;
+    std::cout << "0:text 1:cylinder 2:gravitationalWell 3:cylinederFace" << std::endl;
+    std::cin >> option;
+    SoSeparator* body = new SoSeparator;
+    switch (option)
+    {
+    case 0:
+    {
+        SoFont* font = new SoFont;
+        font->name.setValue("Courier-BoldOblique");
+        font->size.setValue(10);
+        body->addChild(font);
+        SoText3* text = new SoText3;
+        text->string.connectFrom(SoDB::getGlobalField("realTime"));
+        body->addChild(text);
+        break;
+    }
+    case 1:
+    {
+        SoCylinder* cylinder = new SoCylinder;
+        cylinder->radius.setValue(3.0f);
+        cylinder->height.setValue(10.0f);
+        body->addChild(cylinder);
+        break;
+    }
+    case 2:
+    {
+        body = gravWellSep(60, 1.0, 0.7);
+        break;
+    }
+    case 3:
+    {
+        body = cylFace(10.0f, 3.0f, 60);
+        break;
+    }
+    default:
+        break;
+    }
+
+    SoSeparator* stencilWriteSep = new SoSeparator;
+    stencilWriteSep->addChild(colorMask);
+    //stencilWriteSep->addChild(polygonOffset);
+    stencilWriteSep->addChild(body);
+    m_root->addChild(stencilWriteSep);
+
+    SoSeparator* stencilTestSep = new SoSeparator;
+    stencilTestSep->addChild(drawStyle);
+    stencilTestSep->addChild(lightModel);
+    stencilTestSep->addChild(body);
+    m_root->addChild(stencilTestSep);
+}
+
+void InventorEx::autoZoom()
+{
+    //SoSeparator* testRoot = new SoSeparator;
+    //SoSeparator* test1 = new SoSeparator;
+    //SoSeparator* test2 = new SoSeparator;
+    //SoSeparator* test3 = new SoSeparator;
+
+    //SoSphere* sphere = new SoSphere;
+    //sphere->radius = 1.0f;
+
+    ////SoTranslation* trans = new SoTranslation;
+    ////trans->translation.setValue(0.0f, 10.0f, 0.0f);
+
+    ////SoTransform* trans = new SoTransform;
+    ////trans->translation.setValue(0.0f, 10.0f, 0.0f);
+
+    //SoMatrixTransform* trans = new SoMatrixTransform;
+    //SbMatrix mat;
+    //mat.setTranslate(SbVec3f(0.0f, 10.0f, 0.0f));
+    //trans->matrix.setValue(mat);
+
+    //SoZoomAdaptor* zoomAdaptor = new SoZoomAdaptor;
+    //zoomAdaptor->m_isEqualFactor = true;
+
+    //SoMaterial* matR = new SoMaterial;
+    //matR->diffuseColor.setValue(1.0f, 0.0f, 0.0f);
+
+    //SoMaterial* matG = new SoMaterial;
+    //matG->diffuseColor.setValue(0.0f, 1.0f, 0.0f);
+
+    //SoMaterial* matB = new SoMaterial;
+    //matB->diffuseColor.setValue(0.0f, 0.0f, 1.0f);
+
+    //m_vpRoot->addChild(testRoot);
+    //testRoot->addChild(sphere);
+    //testRoot->addChild(test1);
+    //testRoot->addChild(test2);
+    //testRoot->addChild(test3);
+    //test1->addChild(matR);
+    //test1->addChild(zoomAdaptor);
+    //test1->addChild(sphere);
+    //test2->addChild(matG);
+    //test2->addChild(trans);
+    //test2->addChild(zoomAdaptor);
+    //test2->addChild(sphere);
+    //test3->addChild(matB);
+    //test3->addChild(zoomAdaptor);
+    //test3->addChild(trans);
+    //test3->addChild(sphere);
+}
+
+void InventorEx::shaderProgram()
+{
+    // 创建着色器程序节点
+    SoShaderProgram* shaderProgram = new SoShaderProgram;
+
+    // 创建并设置顶点着色器
+    SoVertexShader* vertexShader = new SoVertexShader;
+    vertexShader->sourceProgram.setValue("perpixel_vertex_offset.glsl");
+    shaderProgram->shaderObject.set1Value(0, vertexShader);
+
+    // 创建并设置片元着色器
+    SoFragmentShader* fragmentShader = new SoFragmentShader;
+    fragmentShader->sourceProgram.setValue("perpixel_fragment.glsl");
+    //shaderProgram->shaderObject.set1Value(1, fragmentShader);
+
+    SoSeparator* redSphere = new SoSeparator;
+    // 添加着色器程序到根节点
+    redSphere->addChild(shaderProgram);
+
+    // 设置材质和光照参数
+    SoMaterial* material = new SoMaterial;
+    material->diffuseColor.setValue(1, 0, 0); // 红色
+    //material->specularColor.setValue(1, 1, 1); // 高光颜色
+    //material->shininess.setValue(0.9); // 光泽度
+    m_root->addChild(material);
+
+    // 添加一个球体，展示Phong光照效果
+    SoSphere* sphere = new SoSphere;
+    redSphere->addChild(sphere);
+
+    SoSeparator* greenSphere = new SoSeparator;
+
+    SoMaterial* material2 = new SoMaterial;
+    material2->diffuseColor.setValue(0, 1, 0); // 绿色
+    greenSphere->addChild(material2);
+    greenSphere->addChild(sphere);
+
+    m_root->addChild(redSphere);
+    m_root->addChild(greenSphere);
+
+    SoColorMask* colorMask = new SoColorMask;
+    colorMask->red = FALSE;
+    colorMask->green = FALSE;
+    colorMask->blue = FALSE;
+    colorMask->alpha = FALSE;
+    m_root->addChild(colorMask);
+
+    SoCube* cube = new SoCube;
+    cube->width = 10.0f;
+    cube->height = 10.0f;
+    cube->depth = 10.0f;
+    m_root->addChild(cube);
+    //m_viewer->setHeadlightEnabled(false);
+}
+
+void InventorEx::shaderHightlight()
+{
+    // 创建着色器程序节点
+    SoShaderProgram* shaderProgram = new SoShaderProgram();
+
+    // 创建并设置顶点着色器
+    SoVertexShader* vertexShader = new SoVertexShader();
+    vertexShader->sourceProgram.setValue("vertex_shader2.glsl");
+    shaderProgram->shaderObject.set1Value(0, vertexShader);
+
+    // 创建并设置片元着色器
+    SoFragmentShader* fragmentShader = new SoFragmentShader();
+    fragmentShader->sourceProgram.setValue("highlight_fragment_shader2.glsl");
+    shaderProgram->shaderObject.set1Value(1, fragmentShader);
+
+    // 设置高亮颜色
+    //SoShaderParameter4f* highlightColor = new SoShaderParameter4f;
+    //highlightColor->name.setValue("highlightColor"); // 这里的名字要和着色器中的uniform变量名一致
+    //highlightColor->value.setValue(1.0, 1.0, 0.0, 1.0); // 设置为黄色
+    //fragmentShader->parameter.set1Value(0, highlightColor); // 将这个参数传递给片元着色器
+
+    SoSeparator* defaultCube = new SoSeparator;
+    SoSeparator* highlightCube = new SoSeparator;
+
+    SoCube* cube = new SoCube;
+    defaultCube->addChild(cube);
+
+    SoMaterial* highlightMaterial = new SoMaterial;
+    highlightMaterial->diffuseColor.setValue(0, 0, 1);
+    SoTranslation* translation = new SoTranslation;
+    translation->translation.setValue(1, 0, 0);
+    highlightCube->addChild(shaderProgram); // 注意：shaderProgram 应当在设置所有参数后添加到场景中
+    highlightCube->addChild(translation);
+    highlightCube->addChild(highlightMaterial);
+    highlightCube->addChild(cube);
+
+    m_root->addChild(defaultCube);
+    m_root->addChild(highlightCube);
+}
+
+void InventorEx::zfighting()
+{
+    SoDepthBuffer* depthBuffer = new SoDepthBuffer;
+    depthBuffer->function = SoDepthBuffer::LESS;
+    m_root->addChild(depthBuffer);
+
+    // 创建两个材质节点
+    SoMaterial* mat1 = new SoMaterial;
+    mat1->diffuseColor.setValue(1, 0, 0);
+    SoMaterial* mat2 = new SoMaterial;
+    mat2->diffuseColor.setValue(0, 0, 1);
+
+    // 创建两个立方体
+    SoSeparator* sep1 = new SoSeparator;
+    sep1->addChild(mat1);
+    sep1->addChild(new SoSphere);
+    SoSeparator* sep2 = new SoSeparator;
+    sep2->addChild(mat2);
+    sep2->addChild(new SoSphere);
+    m_root->addChild(sep1);
+    m_root->addChild(sep2);
+}
+
+// Callback function to terminate action
+//void terminateActionCallback(void* userData, SoAction* action)
+//{
+//    if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+//        // Terminate the action, preventing the rendering of this node and its children
+//        action->setTerminated(TRUE);
+//    }
+//}
+
+// 回调函数，用于决定是否继续遍历子树
+static SoCallbackAction::Response renderCallback(void* userData, SoCallbackAction* action, const SoNode* node)
+{
+    // 检查当前的Action是否为SoGLRenderAction
+    if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
+    {
+        // 如果是渲染Action，继续遍历子树
+        return SoCallbackAction::CONTINUE;
+    }
+    else {
+        // 如果是其他类型的Action，停止遍历这个子树
+        return SoCallbackAction::PRUNE;
+    }
+}
+
+void InventorEx::terminate()
+{
+    // Add a cube
+    SoCube* cube = new SoCube;
+    m_root->addChild(cube);
+
+    SoSeparator* sep = new SoSeparator;
+
+    // Add a callback node to terminate the action
+    //SoCallback* callback = new SoCallback;
+    //callback->setCallback(renderCallback);
+    //sep->addChild(callback);
+
+    // Add a sphere - this should not be rendered
+    SoSphere* sphere = new SoSphere;
+    sep->addChild(sphere);
+
+    m_root->addChild(sep);
+
+    // Add a cylinder - this should be rendered
+    SoCylinder* cylinder = new SoCylinder;
+    m_root->addChild(cylinder);
+}
+
+void InventorEx::materialIndex()
+{
+    float vertices[8][3] = {
+    0.0f, 0.0f, 0.0f, // 0
+    1.0f, 0.0f, 0.0f, // 1
+    1.0f, 1.0f, 0.0f, // 2
+    0.0f, 1.0f, 0.0f, // 3
+    0.0f, 0.0f, 1.0f, // 4
+    1.0f, 0.0f, 1.0f, // 5
+    1.0f, 1.0f, 1.0f, // 6
+    0.0f, 1.0f, 1.0f  // 7
+    };
+
+    // 使用三角形定义立方体面，每个三角形以-1结尾
+    int32_t indicesTri[48] = {
+        0, 1, 2, -1, 0, 2, 3, -1, // 底
+        4, 7, 6, -1, 4, 6, 5, -1, // 顶
+        0, 4, 5, -1, 0, 5, 1, -1, // 前
+        3, 2, 6, -1, 3, 6, 7, -1, // 后
+        0, 3, 7, -1, 0, 7, 4, -1, // 左
+        1, 5, 6, -1, 1, 6, 2, -1  // 右
+    };
+
+    int32_t materialIndices[24] =
+    {
+        0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0
+    };
+
+    SoShapeHints* shapeHints = new SoShapeHints;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+
+    // 创建材质绑定节点
+    SoMaterialBinding* materialBinding = new SoMaterialBinding;
+    materialBinding->value = SoMaterialBinding::PER_FACE_INDEXED;
+
+    // 创建颜色和透明度节点，以及默认材质
+    SoMaterial* materials = new SoMaterial;
+    materials->diffuseColor.setValues(0, 3, new SbColor[3]{ {0.8, 0.8, 0.8}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0} }); // 默认，红色，绿色
+    materials->transparency.setValues(0, 3, new float[3] {0.0, 0.5, 0.5}); // 默认不透明，红绿透明
+
+    // 第一个立方体和第二个立方体的顶点
+    SoCoordinate3* coords = new SoCoordinate3;
+    coords->point.setValues(0, 8, vertices);
+
+    // 第一个立方体
+    SoIndexedFaceSet* cube1 = new SoIndexedFaceSet;
+    cube1->coordIndex.setValues(0, 48, indicesTri);
+    cube1->materialIndex.setValues(0, 12, materialIndices); // 设置特殊材料的面
+
+    // 第二个立方体，平移后的
+    SoTranslation* translation = new SoTranslation;
+    translation->translation.setValue(0.5f, 0.5f, 0.0f);
+
+    SoIndexedFaceSet* cube2 = new SoIndexedFaceSet;
+    cube2->coordIndex.setValues(0, 48, indicesTri);
+    cube2->materialIndex.setValues(0, 12, materialIndices + 12); // 设置特殊材料的面
+
+    // 构建场景图
+    SoSeparator* customScene = new SoSeparator;
+    customScene->addChild(shapeHints);
+    customScene->addChild(materials); // 添加材质
+    customScene->addChild(materialBinding); // 添加材质绑定
+    customScene->addChild(coords); // 添加顶点
+    customScene->addChild(cube1); // 添加第一个立方体
+    customScene->addChild(translation); // 添加平移，对第二个立方体生效
+    customScene->addChild(cube2); // 添加第二
+
+    m_root->addChild(customScene);
+
+    //m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparentDelayedObjectRenderType(SoGLRenderAction::NONSOLID_SEPARATE_BACKFACE_PASS);
+
+}
+
+void InventorEx::divideTransp()
+{
+    float vertices[8][3] = {
+    0.0f, 0.0f, 0.0f, // 0
+    1.0f, 0.0f, 0.0f, // 1
+    1.0f, 1.0f, 0.0f, // 2
+    0.0f, 1.0f, 0.0f, // 3
+    0.0f, 0.0f, 1.0f, // 4
+    1.0f, 0.0f, 1.0f, // 5
+    1.0f, 1.0f, 1.0f, // 6
+    0.0f, 1.0f, 1.0f  // 7
+    };
+
+    SoShapeHints* shapeHints = new SoShapeHints;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+
+    // 创建材质绑定节点
+    SoMaterialBinding* materialBinding = new SoMaterialBinding;
+    materialBinding->value = SoMaterialBinding::PER_FACE_INDEXED;
+
+    // 创建颜色和透明度节点，以及默认材质
+    SoMaterial* materials = new SoMaterial;
+    materials->diffuseColor.setValues(0, 3, new SbColor[3]{ {0.8, 0.8, 0.8}, {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0} }); // 默认，红色，绿色
+    materials->transparency.setValues(0, 3, new float[3] {0.0, 0.5, 0.5}); // 默认不透明，红绿透明
+
+    // 第一个立方体和第二个立方体的顶点
+    SoCoordinate3* coords = new SoCoordinate3;
+    coords->point.setValues(0, 8, vertices);
+
+    // 第二个立方体，平移后的
+    SoTranslation* translation = new SoTranslation;
+    translation->translation.setValue(0.5f, 0.5f, 0.0f);
+
+    // 构建场景图
+    SoSeparator* customScene = new SoSeparator;
+
+    // 定义单个面的顶点索引
+    int32_t faceIndices[6][8] = {
+        {0, 1, 2, -1, 0, 2, 3, -1}, // 底
+        {4, 7, 6, -1, 4, 6, 5, -1}, // 顶
+        {0, 4, 5, -1, 0, 5, 1, -1}, // 前
+        {3, 2, 6, -1, 3, 6, 7, -1}, // 后
+        {0, 3, 7, -1, 0, 7, 4, -1}, // 左
+        {1, 5, 6, -1, 1, 6, 2, -1}  // 右
+    };
+
+    int32_t faceMaterialIndicesRed[12] = { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0 };
+    int32_t faceMaterialIndicesGreen[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0 };
+
+    // 创建场景根节点
+    m_root->addChild(shapeHints);
+    m_root->addChild(materials);
+    m_root->addChild(materialBinding);
+    m_root->addChild(coords);
+
+    // 添加立方体1的每个面
+    for (int i = 0; i < 6; i++) {
+        SoSeparator* faceSep = new SoSeparator;
+        SoIndexedFaceSet* face = new SoIndexedFaceSet;
+        face->coordIndex.setValues(0, 8, faceIndices[i]);
+        face->materialIndex.setValues(0, 2, &faceMaterialIndicesRed[2 * i]); // 设置每个面的材质索引
+        faceSep->addChild(face);
+        m_root->addChild(faceSep); // 将面添加到场景中
+    }
+
+    // 第二个立方体的变换
+    SoSeparator* cube2Sep = new SoSeparator;
+    cube2Sep->addChild(translation); // 对第二个立方体进行平移
+
+    // 添加立方体2的每个面
+    for (int i = 0; i < 6; i++) {
+        SoSeparator* faceSep = new SoSeparator;
+        SoIndexedFaceSet* face = new SoIndexedFaceSet;
+        face->coordIndex.setValues(0, 8, faceIndices[i]);
+        face->materialIndex.setValues(0, 2, &faceMaterialIndicesGreen[2 * i]); // 设置每个面的材质索引
+        faceSep->addChild(face);
+        cube2Sep->addChild(faceSep); // 将面添加到场景中
+    }
+
+    m_root->addChild(cube2Sep); // 将第二个立方体添加到场景中
+
+    m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparentDelayedObjectRenderType(SoGLRenderAction::NONSOLID_SEPARATE_BACKFACE_PASS);
+
+}
+
+void InventorEx::text2()
+{
+    SoText2* text = new SoText2;
+    text->string.setValue("Hello, World!");
+    text->justification = SoText2::CENTER;
+
+    SoMaterial* mat = new SoMaterial;
+    mat->diffuseColor.setValue(1, 0, 0);
+    mat->transparency = 0.2;
+
+    m_root->addChild(mat);
+    m_root->addChild(text);
 }

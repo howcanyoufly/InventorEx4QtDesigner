@@ -20,10 +20,10 @@
 
 using namespace SIM::Coin3D::Quarter;
 
-class InventorEx 
+class InventorEx
 {
 public:
-    struct ShapeData 
+    struct ShapeData
     {
         std::vector<std::array<float, 3>> points;
         std::vector<int32_t> faceIndices;
@@ -132,6 +132,15 @@ private:
     void outputBuffer();
     void cylinderFace();
     void gravitationalWell();
+    void outline2();
+    void autoZoom();
+    void shaderProgram();
+    void shaderHightlight();
+    void zfighting();
+    void terminate();
+    void materialIndex();
+    void divideTransp();
+    void text2();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
@@ -160,7 +169,7 @@ private:
 };
 
 
-class SoOITNode : public SoSeparator 
+class SoOITNode : public SoSeparator
 {
     SO_NODE_HEADER(SoOITNode);
 
