@@ -18,6 +18,8 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMainWindow>
 
+#include <NavigationWidget.h>
+
 using namespace SIM::Coin3D::Quarter;
 
 class InventorEx
@@ -161,7 +163,14 @@ private:
 
     QApplication* m_app;
     QMainWindow* m_mainwin;
+
+
+#define USE_NAVIQUARTER
+#ifdef USE_NAVIQUARTER
+    NavQuarterWidget::Tf::NavigationWidget* m_viewer;
+#else
     QuarterWidget* m_viewer;
+#endif
     SoSeparator* m_root;
 
     bool m_reset;// function does but plugin does not

@@ -191,10 +191,18 @@ InventorEx::InventorEx(int argc, char** argv)
     m_mainwin->resize(WINDOWWIDTH, WINDOWHEIGHT);
 
     // Create a QuarterWidget for displaying a Coin scene graph
+#ifdef USE_NAVIQUARTER
+    m_viewer = new NavQuarterWidget::Tf::NavigationWidget(m_mainwin);
+    m_viewer->AddTestModel();
+#else
     m_viewer = new QuarterWidget(m_mainwin);
     //set default navigation mode file
     m_viewer->setNavigationModeFile();
+#endif
     m_mainwin->setCentralWidget(m_viewer);
+
+    m_mainwin->show();
+    m_app->exec();
 
     // root
     m_root = new SoSeparator;
@@ -227,9 +235,13 @@ void InventorEx::resetScene()
 
     m_mainwin = new QMainWindow();
     m_mainwin->resize(WINDOWWIDTH, WINDOWHEIGHT);
+#ifdef USE_NAVIQUARTER
+    m_viewer = new NavQuarterWidget::Tf::NavigationWidget(m_mainwin);
+#else
     m_viewer = new QuarterWidget(m_mainwin);
 
     m_viewer->setNavigationModeFile();
+#endif
     m_mainwin->setCentralWidget(m_viewer);
 }
 
@@ -1323,7 +1335,9 @@ void InventorEx::glCallback()
     buildScene(m_root);
 
     // Initialize an Inventor Win RenderArea and draw the scene.
+#ifndef USE_NAVIQUARTER
     renderViewer = m_viewer;
+#endif
     m_viewer->setBackgroundColor(QColor(0.8f, 0.8f, 0.8f));
 }
 
@@ -1398,7 +1412,9 @@ void InventorEx::oit()
     oitNode->addChild(renderCamera);// 为什么放root下不行
     //oitNode->addChild(new SoCube);
     buildScene(oitNode);
+#ifndef USE_NAVIQUARTER
     renderViewer = m_viewer;
+#endif
 }
 
 void InventorEx::loadGLCallback()
@@ -1415,8 +1431,9 @@ void InventorEx::loadGLCallback()
     SoCallback* callback = new SoCallback;
     callback->setCallback(callbackRoutine);
     m_root->addChild(callback);
-
+#ifndef USE_NAVIQUARTER
     renderViewer = m_viewer;
+#endif
 }
 
 void InventorEx::loadBackground()

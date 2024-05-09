@@ -104,13 +104,13 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;QUARTER_DLL;QT_CORE_LIB;QT_GUI_LIB;QT_WIDGETS_LIB;QT_OPENGL_LIB;QT_UITOOLS_LIB;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:/Qt/5.15.2/msvc2019_64/include/QtOpenGL;C:/Qt/5.15.2/msvc2019_64/include/QtWidgets;C:/Qt/5.15.2/msvc2019_64/include/QtCore;C:/Qt/5.15.2/msvc2019_64/include/QtGui;C:/Qt/5.15.2/msvc2019_64/include;../Coin3dPack_x64_Debug/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:/Qt/5.15.2/msvc2019_64/include/QtOpenGL;C:/Qt/5.15.2/msvc2019_64/include/QtWidgets;C:/Qt/5.15.2/msvc2019_64/include/QtCore;C:/Qt/5.15.2/msvc2019_64/include/QtGui;C:/Qt/5.15.2/msvc2019_64/include;../Coin3dPack_x64_Debug/include;../NavigationWidget;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>C:/Qt/5.15.2/msvc2019_64/lib;../Coin3dPack_x64_Debug/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opengl32.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5OpenGLd.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5UiToolsd.lib;Coin4d.lib;Quarter1d.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5Widgetsd.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5Guid.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5Cored.lib;C:\Qt\5.15.2\msvc2019_64\lib\\Qt5Widgetsd.lib;C:\Qt\5.15.2\msvc2019_64\lib\\Qt5Guid.lib;C:\Qt\5.15.2\msvc2019_64\lib\\Qt5Cored.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:/Qt/5.15.2/msvc2019_64/lib;../Coin3dPack_x64_Debug/lib;../NavigationWidget;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5OpenGLd.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5UiToolsd.lib;Coin4d.lib;Quarter1d.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5Widgetsd.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5Guid.lib;C:\Qt\5.15.2\msvc2019_64\lib\Qt5Cored.lib;C:\Qt\5.15.2\msvc2019_64\lib\\Qt5Widgetsd.lib;C:\Qt\5.15.2\msvc2019_64\lib\\Qt5Guid.lib;C:\Qt\5.15.2\msvc2019_64\lib\\Qt5Cored.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;NavigationWidget.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
