@@ -790,7 +790,7 @@ void NavQuarterWidget::Tf::NavigationWidget::AddTestModel()
 
         SoTranslation* translation = new SoTranslation();
         translation->translation.setValue(5.0f, 5.0f, 5.0f);
-        testMeshSeparator->addChild(translation);
+        //testMeshSeparator->addChild(translation);
 
         testMeshSeparator->addChild(new SoCube());
         if (testMeshSeparator)

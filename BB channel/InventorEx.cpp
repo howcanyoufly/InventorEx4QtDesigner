@@ -51,6 +51,7 @@
 #include <Inventor/nodes/SoVertexShader.h>
 #include <Inventor/nodes/SoFragmentShader.h>
 #include <Inventor/nodes/SoShaderParameter.h>
+#include <Inventor/nodes/SoMatrixTransform.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -70,6 +71,7 @@
 #include "SoGLColorMaskElement.h"
 #include "SoSwitchToChild.h"
 #include "SoDeferredRender.h"
+#include "SoZoomAdaptor.h"
 
 #include "utils.h"
 
@@ -150,7 +152,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"performance", std::bind(&InventorEx::performance, this)},
         {"pointSet", std::bind(&InventorEx::pointSet, this)},
         {"customPolygonOffset", std::bind(&InventorEx::customPolygonOffset, this)},
-        {"lightsTest", std::bind(&InventorEx::lightsTest, this)},
+        {"lightTest", std::bind(&InventorEx::lightTest, this)},
         {"levelOfDetail", std::bind(&InventorEx::levelOfDetail, this)},
         {"OBB", std::bind(&InventorEx::OBB, this)},
         {"outline", std::bind(&InventorEx::outline, this)},
@@ -164,6 +166,9 @@ InventorEx::InventorEx(int argc, char** argv)
         {"materialIndex", std::bind(&InventorEx::materialIndex, this)},
         {"divideTransp", std::bind(&InventorEx::divideTransp, this)},
         {"text2", std::bind(&InventorEx::text2, this)},
+        {"twoLine", std::bind(&InventorEx::twoLine, this)},
+        {"drtest", std::bind(&InventorEx::drtest, this)},
+        {"autoZoom", std::bind(&InventorEx::autoZoom, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -179,13 +184,13 @@ InventorEx::InventorEx(int argc, char** argv)
     // Initializes Quarter (and implicitly also Coin and Qt
     Quarter::init();
     // Remember to initialize the custom node!
-    SoOITNode::initClass();
     SoGradientBackground::initClass();
     SoColorMaskElement::initClass();
     SoGLColorMaskElement::initClass();
     SoColorMask::initClass();
     SoSwitchToChild::initClass();
     SoDeferredRender::initClass();
+    SoZoomAdaptor::initClass();
 
     m_mainwin = new QMainWindow();
     m_mainwin->resize(WINDOWWIDTH, WINDOWHEIGHT);
@@ -201,8 +206,10 @@ InventorEx::InventorEx(int argc, char** argv)
 #endif
     m_mainwin->setCentralWidget(m_viewer);
 
+#ifdef USE_NAVIQUARTER
     m_mainwin->show();
     m_app->exec();
+#endif
 
     // root
     m_root = new SoSeparator;
@@ -588,6 +595,8 @@ void InventorEx::lights()
 
     m_root->addChild(new SoCone);
 
+    m_viewer->setHeadlightEnabled(false);
+
 }
 
 void InventorEx::referenceCount()
@@ -630,18 +639,18 @@ void InventorEx::referenceCount()
     std::cin >> isDelete;
     switch (isDelete)
     {
-    case 0:
-        P->unref();
-        break;
-    case 1:
-        P->unrefNoDelete();
-        break;
-    case 2:
-        P->removeAllChildren();
-        break;
-    case 3:
-        P->removeChild(Q);
-        break;
+        case 0:
+            P->unref();
+            break;
+        case 1:
+            P->unrefNoDelete();
+            break;
+        case 2:
+            P->removeAllChildren();
+            break;
+        case 3:
+            P->removeChild(Q);
+            break;
 
     }
     refCount[0] = P->getRefCount();
@@ -1341,80 +1350,9 @@ void InventorEx::glCallback()
     m_viewer->setBackgroundColor(QColor(0.8f, 0.8f, 0.8f));
 }
 
-
-SO_NODE_SOURCE(SoOITNode);
-
-SoOITNode::SoOITNode()
-{
-    SO_NODE_CONSTRUCTOR(SoOITNode);
-}
-
-void SoOITNode::initClass()
-{
-    SO_NODE_INIT_CLASS(SoOITNode, SoSeparator, "Separator");
-    SO_ENABLE(SoGLRenderAction, SoCacheElement);
-}
-
-void SoOITNode::GLRender(SoGLRenderAction* action)
-{
-    // 1. 绑定 OIT 资源 (例如头指针纹理，片段列表缓冲区等)
-
-    // 2. 执行 Build Phase 渲染，渲染所有子节点
-
-    // 3. 执行 Resolve Phase 渲染
-
-    // 4. 解绑 OIT 资源
-
-    glPushMatrix();
-    glTranslatef(0.0f, -3.0f, 0.0f);
-    glColor3f(0.0f, 0.7f, 0.0f);
-    glLineWidth(2);
-    glDisable(GL_LIGHTING);  // so we don't have to set normals
-    drawFloor();
-    drawAxisCross();
-    glEnable(GL_LIGHTING);
-    glLineWidth(1);
-    glPopMatrix();
-
-    SoState* state = action->getState();
-    SoGLLazyElement* lazyElt = (SoGLLazyElement*)SoLazyElement::getInstance(state);
-    lazyElt->reset(state, (SoLazyElement::DIFFUSE_MASK) | (SoLazyElement::LIGHT_MODEL_MASK));
-}
-
-void SoOITNode::GLRenderBelowPath(SoGLRenderAction* action)
-{
-    this->GLRender(action);
-    SoSeparator::GLRenderBelowPath(action);
-}
-
-void SoOITNode::setupOITResources() {
-    // Initialize OpenGL resources for OIT.
-    // For instance, shader compilation, VBO generation, etc.
-    // You can refer to the OpenGL Red Book example for details.
-}
-
-void SoOITNode::cleanupOITResources() {
-    // Cleanup OpenGL resources.
-    // This includes deleting shaders, VBOs, textures, etc.
-}
-
 void InventorEx::oit()
 {
-    buildFloor();
 
-    SoOITNode* oitNode = new SoOITNode;
-    m_root->addChild(oitNode);
-    renderCamera = new SoPerspectiveCamera;
-    renderCamera->position.setValue(0.0f, 0.0f, 5.0f);
-    renderCamera->heightAngle = (float)(M_PI / 2.0f);
-    renderCamera->nearDistance = 2.0f;
-    renderCamera->farDistance = 12.0f;
-    oitNode->addChild(renderCamera);// 为什么放root下不行
-    //oitNode->addChild(new SoCube);
-    buildScene(oitNode);
-#ifndef USE_NAVIQUARTER
-    renderViewer = m_viewer;
-#endif
 }
 
 void InventorEx::loadGLCallback()
@@ -2398,56 +2336,56 @@ void InventorEx::previewPointForward()
     std::cin >> method;
     switch (method)
     {
-    case 0:
-        m_root->addChild(cube);
-        m_root->addChild(separator);
-        material->diffuseColor.setValue(1.0, 0.0, 0.0);
-        separator->addChild(material);
-        separator->addChild(cleanDepthBuffCB);
-        separator->addChild(point);
-        cleanDepthBuffCB->setCallback(glClearDepthBuffer);
-        break;
-    case 1:
-        m_root->addChild(depthBuffer);
-        m_root->addChild(cube);
-        m_root->addChild(separator);
-        material->diffuseColor.setValue(1.0, 0.0, 0.0);
-        separator->addChild(material);
-        separator->addChild(depthBufferOver);
-        separator->addChild(point);
-        depthBuffer->range.setValue(0.1, 1.0);
-        depthBufferOver->range.setValue(0, 0.1);
-        break;
-    case 2:
-        m_root->addChild(cube);
-        m_root->addChild(annotation);
-        complexity->value = 1;
-        material->emissiveColor = SbColor(1, 0, 0);
-        annotation->addChild(complexity);
-        annotation->addChild(material);
-        annotation->addChild(point);
-    case 3:
-        m_root->addChild(cube);
-        m_root->addChild(separator);
-        //material->diffuseColor.setValue(1.0, 0.0, 0.0);
-        material->emissiveColor = SbColor(1, 0, 0);
-        material->transparency = 0.8;
-        separator->addChild(material);
-        separator->addChild(shapeHints);
-        separator->addChild(depthBuffer);
-        separator->addChild(point);
-        depthBuffer->test = false;
-        shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
-        shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
-        break;
-    case 4:
-        m_root->addChild(cube);
-        m_root->addChild(defferedRender);
-        material->diffuseColor.setValue(1.0, 0.0, 0.0);
-        defferedRender->addChild(material);
-        defferedRender->addChild(point);
-        defferedRender->clearDepthBuffer = TRUE;
-        break;
+        case 0:
+            m_root->addChild(cube);
+            m_root->addChild(separator);
+            material->diffuseColor.setValue(1.0, 0.0, 0.0);
+            separator->addChild(material);
+            separator->addChild(cleanDepthBuffCB);
+            separator->addChild(point);
+            cleanDepthBuffCB->setCallback(glClearDepthBuffer);
+            break;
+        case 1:
+            m_root->addChild(depthBuffer);
+            m_root->addChild(cube);
+            m_root->addChild(separator);
+            material->diffuseColor.setValue(1.0, 0.0, 0.0);
+            separator->addChild(material);
+            separator->addChild(depthBufferOver);
+            separator->addChild(point);
+            depthBuffer->range.setValue(0.1, 1.0);
+            depthBufferOver->range.setValue(0, 0.1);
+            break;
+        case 2:
+            m_root->addChild(cube);
+            m_root->addChild(annotation);
+            complexity->value = 1;
+            material->emissiveColor = SbColor(1, 0, 0);
+            annotation->addChild(complexity);
+            annotation->addChild(material);
+            annotation->addChild(point);
+        case 3:
+            m_root->addChild(cube);
+            m_root->addChild(separator);
+            //material->diffuseColor.setValue(1.0, 0.0, 0.0);
+            material->emissiveColor = SbColor(1, 0, 0);
+            material->transparency = 0.8;
+            separator->addChild(material);
+            separator->addChild(shapeHints);
+            separator->addChild(depthBuffer);
+            separator->addChild(point);
+            depthBuffer->test = false;
+            shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+            shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+            break;
+        case 4:
+            m_root->addChild(cube);
+            m_root->addChild(defferedRender);
+            material->diffuseColor.setValue(1.0, 0.0, 0.0);
+            defferedRender->addChild(material);
+            defferedRender->addChild(point);
+            defferedRender->clearDepthBuffer = TRUE;
+            break;
     }
 
     cube->width = 1.0;
@@ -3908,19 +3846,19 @@ void InventorEx::removeAllChildren()
     std::cin >> isDelete;
     switch (isDelete)
     {
-    case 0:
-        Q->unref();
-        break;
-    case 1:
-        Q->unrefNoDelete();
-        break;
-    case 2:
-        Q->removeAllChildren();
-        break;
-    case 3:
-        Q->removeAllChildren();
-        Q->unref();
-        break;
+        case 0:
+            Q->unref();
+            break;
+        case 1:
+            Q->unrefNoDelete();
+            break;
+        case 2:
+            Q->removeAllChildren();
+            break;
+        case 3:
+            Q->removeAllChildren();
+            Q->unref();
+            break;
     }
     refCount[0] = Q->getRefCount();
     refCount[1] = R->getRefCount();
@@ -4325,18 +4263,25 @@ void InventorEx::customPolygonOffset()
                                           });
 }
 
-void InventorEx::lightsTest()
+void InventorEx::lightTest()
 {
-    CREATE_NODE(SoSeparator, lightsRoot)
-        CREATE_NODE(SoDirectionalLight, directionalLight)
-        CREATE_NODE(SoCube, cube)
+    CREATE_NODE(SoDirectionalLight, directionalLight);
+    CREATE_NODE(SoMaterial, mat);
+    CREATE_NODE(SoCube, cube);
 
-        ADD_CHILD(m_root, lightsRoot);
-    ADD_CHILD(lightsRoot, directionalLight);
+    ADD_CHILD(m_root, directionalLight);
+    ADD_CHILD(m_root, mat);
     ADD_CHILD(m_root, cube);
 
-    directionalLight->direction.setValue(0, -1, -1);
-    directionalLight->color.setValue(1, 0, 0);
+    directionalLight->direction.setValue(0, 0, 1);
+    directionalLight->color.setValue(1, 1, 0);
+
+    mat->ambientColor.setValue(0.0, 0.0, 0.0);
+    mat->diffuseColor.setValue(0.0, 1.0, 0.0);
+    mat->specularColor.setValue(0.0, 0.0, 0.0);
+    mat->emissiveColor.setValue(0.0, 0.0, 0.0);
+
+    m_viewer->setHeadlightEnabled(false);
 }
 
 void mouseDragCB(void* userData, SoEventCallback* eventCB) {
@@ -4444,37 +4389,37 @@ void InventorEx::outline()
     SoSeparator* body = new SoSeparator;
     switch (option)
     {
-    case 0:
-    {
-        SoFont* font = new SoFont;
-        font->name.setValue("Courier-BoldOblique");
-        font->size.setValue(10);
-        body->addChild(font);
-        SoText3* text = new SoText3;
-        text->string.connectFrom(SoDB::getGlobalField("realTime"));
-        body->addChild(text);
-        break;
-    }
-    case 1:
-    {
-        SoCylinder* cylinder = new SoCylinder;
-        cylinder->radius.setValue(3.0f);
-        cylinder->height.setValue(10.0f);
-        body->addChild(cylinder);
-        break;
-    }
-    case 2:
-    {
-        body = gravWellSep(60, 1.0, 0.7);
-        break;
-    }
-    case 3:
-    {
-        body = cylFace(10.0f, 3.0f, 60);
-        break;
-    }
-    default:
-        break;
+        case 0:
+        {
+            SoFont* font = new SoFont;
+            font->name.setValue("Courier-BoldOblique");
+            font->size.setValue(10);
+            body->addChild(font);
+            SoText3* text = new SoText3;
+            text->string.connectFrom(SoDB::getGlobalField("realTime"));
+            body->addChild(text);
+            break;
+        }
+        case 1:
+        {
+            SoCylinder* cylinder = new SoCylinder;
+            cylinder->radius.setValue(3.0f);
+            cylinder->height.setValue(10.0f);
+            body->addChild(cylinder);
+            break;
+        }
+        case 2:
+        {
+            body = gravWellSep(60, 1.0, 0.7);
+            break;
+        }
+        case 3:
+        {
+            body = cylFace(10.0f, 3.0f, 60);
+            break;
+        }
+        default:
+            break;
     }
 
     // 创建模板回调
@@ -4781,37 +4726,37 @@ void InventorEx::outline2()
     SoSeparator* body = new SoSeparator;
     switch (option)
     {
-    case 0:
-    {
-        SoFont* font = new SoFont;
-        font->name.setValue("Courier-BoldOblique");
-        font->size.setValue(10);
-        body->addChild(font);
-        SoText3* text = new SoText3;
-        text->string.connectFrom(SoDB::getGlobalField("realTime"));
-        body->addChild(text);
-        break;
-    }
-    case 1:
-    {
-        SoCylinder* cylinder = new SoCylinder;
-        cylinder->radius.setValue(3.0f);
-        cylinder->height.setValue(10.0f);
-        body->addChild(cylinder);
-        break;
-    }
-    case 2:
-    {
-        body = gravWellSep(60, 1.0, 0.7);
-        break;
-    }
-    case 3:
-    {
-        body = cylFace(10.0f, 3.0f, 60);
-        break;
-    }
-    default:
-        break;
+        case 0:
+        {
+            SoFont* font = new SoFont;
+            font->name.setValue("Courier-BoldOblique");
+            font->size.setValue(10);
+            body->addChild(font);
+            SoText3* text = new SoText3;
+            text->string.connectFrom(SoDB::getGlobalField("realTime"));
+            body->addChild(text);
+            break;
+        }
+        case 1:
+        {
+            SoCylinder* cylinder = new SoCylinder;
+            cylinder->radius.setValue(3.0f);
+            cylinder->height.setValue(10.0f);
+            body->addChild(cylinder);
+            break;
+        }
+        case 2:
+        {
+            body = gravWellSep(60, 1.0, 0.7);
+            break;
+        }
+        case 3:
+        {
+            body = cylFace(10.0f, 3.0f, 60);
+            break;
+        }
+        default:
+            break;
     }
 
     SoSeparator* stencilWriteSep = new SoSeparator;
@@ -4829,53 +4774,48 @@ void InventorEx::outline2()
 
 void InventorEx::autoZoom()
 {
-    //SoSeparator* testRoot = new SoSeparator;
-    //SoSeparator* test1 = new SoSeparator;
-    //SoSeparator* test2 = new SoSeparator;
-    //SoSeparator* test3 = new SoSeparator;
+    SoSeparator* testRoot = new SoSeparator;
+    SoSeparator* test1 = new SoSeparator;
+    SoSeparator* test2 = new SoSeparator;
+    SoSeparator* test3 = new SoSeparator;
 
-    //SoSphere* sphere = new SoSphere;
-    //sphere->radius = 1.0f;
+    SoSphere* sphere = new SoSphere;
+    sphere->radius = 1.0f;
 
-    ////SoTranslation* trans = new SoTranslation;
-    ////trans->translation.setValue(0.0f, 10.0f, 0.0f);
+    SoMatrixTransform* trans = new SoMatrixTransform;
+    SbMatrix mat;
+    mat.setTranslate(SbVec3f(0.0f, 10.0f, 0.0f));
+    trans->matrix.setValue(mat);
 
-    ////SoTransform* trans = new SoTransform;
-    ////trans->translation.setValue(0.0f, 10.0f, 0.0f);
+    SoZoomAdaptor* zoomAdaptor = new SoZoomAdaptor;
+    zoomAdaptor->m_isEqualFactor = true;
 
-    //SoMatrixTransform* trans = new SoMatrixTransform;
-    //SbMatrix mat;
-    //mat.setTranslate(SbVec3f(0.0f, 10.0f, 0.0f));
-    //trans->matrix.setValue(mat);
+    SoMaterial* matR = new SoMaterial;
+    matR->diffuseColor.setValue(1.0f, 0.0f, 0.0f);
 
-    //SoZoomAdaptor* zoomAdaptor = new SoZoomAdaptor;
-    //zoomAdaptor->m_isEqualFactor = true;
+    SoMaterial* matG = new SoMaterial;
+    matG->diffuseColor.setValue(0.0f, 1.0f, 0.0f);
 
-    //SoMaterial* matR = new SoMaterial;
-    //matR->diffuseColor.setValue(1.0f, 0.0f, 0.0f);
+    SoMaterial* matB = new SoMaterial;
+    matB->diffuseColor.setValue(0.0f, 0.0f, 1.0f);
 
-    //SoMaterial* matG = new SoMaterial;
-    //matG->diffuseColor.setValue(0.0f, 1.0f, 0.0f);
-
-    //SoMaterial* matB = new SoMaterial;
-    //matB->diffuseColor.setValue(0.0f, 0.0f, 1.0f);
-
-    //m_vpRoot->addChild(testRoot);
-    //testRoot->addChild(sphere);
-    //testRoot->addChild(test1);
-    //testRoot->addChild(test2);
-    //testRoot->addChild(test3);
-    //test1->addChild(matR);
-    //test1->addChild(zoomAdaptor);
-    //test1->addChild(sphere);
-    //test2->addChild(matG);
-    //test2->addChild(trans);
-    //test2->addChild(zoomAdaptor);
-    //test2->addChild(sphere);
-    //test3->addChild(matB);
-    //test3->addChild(zoomAdaptor);
-    //test3->addChild(trans);
-    //test3->addChild(sphere);
+    m_root->addChild(new SoOrthographicCamera);
+    m_root->addChild(testRoot);
+    testRoot->addChild(sphere);
+    testRoot->addChild(test1);
+    testRoot->addChild(test2);
+    testRoot->addChild(test3);
+    test1->addChild(matR);
+    test1->addChild(zoomAdaptor);
+    test1->addChild(sphere);
+    test2->addChild(matG);
+    test2->addChild(trans);
+    test2->addChild(zoomAdaptor);
+    test2->addChild(sphere);
+    test3->addChild(matB);
+    test3->addChild(zoomAdaptor);
+    test3->addChild(trans);
+    test3->addChild(sphere);
 }
 
 void InventorEx::shaderProgram()
@@ -4885,38 +4825,33 @@ void InventorEx::shaderProgram()
 
     // 创建并设置顶点着色器
     SoVertexShader* vertexShader = new SoVertexShader;
-    vertexShader->sourceProgram.setValue("perpixel_vertex_offset.glsl");
+    vertexShader->sourceProgram.setValue("perpixel_vertex.glsl");
     shaderProgram->shaderObject.set1Value(0, vertexShader);
 
     // 创建并设置片元着色器
     SoFragmentShader* fragmentShader = new SoFragmentShader;
-    fragmentShader->sourceProgram.setValue("perpixel_fragment.glsl");
-    //shaderProgram->shaderObject.set1Value(1, fragmentShader);
+    fragmentShader->sourceProgram.setValue("perpixel_fragment_ana.glsl");
+    shaderProgram->shaderObject.set1Value(1, fragmentShader);
 
-    SoSeparator* redSphere = new SoSeparator;
     // 添加着色器程序到根节点
-    redSphere->addChild(shaderProgram);
+    m_root->addChild(shaderProgram);
 
     // 设置材质和光照参数
     SoMaterial* material = new SoMaterial;
-    material->diffuseColor.setValue(1, 0, 0); // 红色
-    //material->specularColor.setValue(1, 1, 1); // 高光颜色
-    //material->shininess.setValue(0.9); // 光泽度
+    material->ambientColor.setValue(0.0, 0.0, 0.0);
+    material->diffuseColor.setValue(0.0, 1.0, 0.0);
+    material->specularColor.setValue(1.0, 1.0, 1.0);
+    material->emissiveColor.setValue(0.0, 0.0, 0.0);
+    material->shininess.setValue(0.9); // 光泽度
     m_root->addChild(material);
 
-    // 添加一个球体，展示Phong光照效果
+    SoCube* cube = new SoCube;
+    cube->width = 2;
+    cube->height = 2;
+    cube->depth = 2;
+
     SoSphere* sphere = new SoSphere;
-    redSphere->addChild(sphere);
-
-    SoSeparator* greenSphere = new SoSeparator;
-
-    SoMaterial* material2 = new SoMaterial;
-    material2->diffuseColor.setValue(0, 1, 0); // 绿色
-    greenSphere->addChild(material2);
-    greenSphere->addChild(sphere);
-
-    m_root->addChild(redSphere);
-    m_root->addChild(greenSphere);
+    sphere->radius = 1.2;
 
     SoColorMask* colorMask = new SoColorMask;
     colorMask->red = FALSE;
@@ -4925,12 +4860,14 @@ void InventorEx::shaderProgram()
     colorMask->alpha = FALSE;
     m_root->addChild(colorMask);
 
-    SoCube* cube = new SoCube;
-    cube->width = 10.0f;
-    cube->height = 10.0f;
-    cube->depth = 10.0f;
+    SoDirectionalLight* myDirLight = new SoDirectionalLight;
+    myDirLight->direction.setValue(0, 0, -1);
+    myDirLight->color.setValue(1, 0, 0);
+    m_root->addChild(myDirLight);
     m_root->addChild(cube);
-    //m_viewer->setHeadlightEnabled(false);
+    m_root->addChild(sphere);
+
+    m_viewer->setHeadlightEnabled(false);
 }
 
 void InventorEx::shaderHightlight()
@@ -5201,7 +5138,10 @@ void InventorEx::divideTransp()
 
     m_root->addChild(cube2Sep); // 将第二个立方体添加到场景中
 
-    m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparentDelayedObjectRenderType(SoGLRenderAction::NONSOLID_SEPARATE_BACKFACE_PASS);
+    m_viewer->getSoRenderManager()->getGLRenderAction()->setNumPasses(4);
+    m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparencyType(SoGLRenderAction::SORTED_LAYERS_BLEND);
+    //m_viewer->getSoRenderManager()->getGLRenderAction()->setSortedLayersNumPasses(4);
+    //m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparentDelayedObjectRenderType(SoGLRenderAction::NONSOLID_SEPARATE_BACKFACE_PASS);
 
 }
 
@@ -5217,4 +5157,132 @@ void InventorEx::text2()
 
     m_root->addChild(mat);
     m_root->addChild(text);
+}
+
+void InventorEx::twoLine()
+{
+    SoDepthBuffer* depthBuffer = new SoDepthBuffer;
+    depthBuffer->range.setValue(0, 0.99f);
+    m_root->addChild(depthBuffer);
+
+    // 定义坐标点
+    SoCoordinate3* coords = new SoCoordinate3;
+    coords->point.set1Value(0, SbVec3f(0, 0, 0));
+    coords->point.set1Value(1, SbVec3f(1, 0, 0));
+    coords->point.set1Value(2, SbVec3f(3, 0, 0));
+    coords->point.set1Value(3, SbVec3f(4, 0, 0));
+    m_root->addChild(coords);
+
+    // 创建材料节点（绿色虚线）
+    SoMaterial* mat1 = new SoMaterial;
+    mat1->diffuseColor.setValue(0, 1, 0);  // 绿色
+    m_root->addChild(mat1);
+
+    // 创建绘制样式节点（虚线）
+    SoDrawStyle* style1 = new SoDrawStyle;
+    style1->linePattern = 0x00FF;  // 点画线
+    style1->lineWidth = 2;
+    m_root->addChild(style1);
+
+    // 创建索引线集（虚线）
+    SoIndexedLineSet* ils1 = new SoIndexedLineSet;
+    ils1->coordIndex.set1Value(0, 0);
+    ils1->coordIndex.set1Value(1, 2);
+    m_root->addChild(ils1);
+
+    SoDepthBuffer* depthBuffer2 = new SoDepthBuffer;
+    depthBuffer2->range.setValue(0, 1.0f);
+    m_root->addChild(depthBuffer2);
+
+    // 创建材料节点（白色实线）
+    SoMaterial* mat2 = new SoMaterial;
+    mat2->diffuseColor.setValue(1, 1, 1);  // 白色
+    m_root->addChild(mat2);
+
+    // 创建绘制样式节点（实线）
+    SoDrawStyle* style2 = new SoDrawStyle;
+    style2->linePattern = 0xFFFF;  // 实线
+    style2->lineWidth = 2;
+    m_root->addChild(style2);
+
+    // 创建索引线集（实线）
+    SoIndexedLineSet* ils2 = new SoIndexedLineSet;
+    ils2->coordIndex.set1Value(0, 1);
+    ils2->coordIndex.set1Value(1, 3);
+    m_root->addChild(ils2);
+}
+
+void InventorEx::drtest()
+{
+    float pts[8][3] = {
+    { 0.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 1.0, 0.0 },
+    { 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 1.0, 0.0, 1.0 },
+    { 1.0, 1.0, 1.0 },
+    { 0.0, 1.0, 1.0 },
+    };
+    int32_t faceIndices[48] = {
+        0, 2, 1, SO_END_FACE_INDEX,
+        0, 3, 2, SO_END_FACE_INDEX,
+        0, 1, 5, SO_END_FACE_INDEX,
+        0, 5, 4, SO_END_FACE_INDEX,
+        1, 2, 6, SO_END_FACE_INDEX,
+        1, 6, 5, SO_END_FACE_INDEX,
+        2, 3, 6, SO_END_FACE_INDEX,
+        3, 7, 6, SO_END_FACE_INDEX,
+        3, 4, 7, SO_END_FACE_INDEX,
+        0, 4, 3, SO_END_FACE_INDEX,
+        4, 5, 7, SO_END_FACE_INDEX,
+        5, 6, 7, SO_END_FACE_INDEX,
+    };
+    int32_t lineIndices[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+    SoSeparator* body = new SoSeparator;
+    SoSeparator* dataNode = new SoSeparator;
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoSeparator* staticWireFrame = new SoSeparator;
+    SoSeparator* faceRoot = new SoSeparator;
+    SoSeparator* lineVisbleRoot = new SoSeparator;
+    SoSeparator* lineHiddenRoot = new SoSeparator;
+    SoIndexedFaceSet* faceSet = new SoIndexedFaceSet;
+    SoIndexedLineSet* lineVisibleSet = new SoIndexedLineSet;
+    SoMaterial* faceMaterial = new SoMaterial;
+    SoMaterial* lineMaterial = new SoMaterial;
+
+    SoDepthBuffer* depthBufferF = new SoDepthBuffer;
+    depthBufferF->range.setValue(0, 1.0f);
+
+    SoDepthBuffer* depthBufferL = new SoDepthBuffer;
+    depthBufferL->range.setValue(0.5f, 0.51f);
+
+    m_root->addChild(body);
+    body->addChild(dataNode);
+    dataNode->addChild(coords);
+    dataNode->addChild(staticWireFrame);
+    staticWireFrame->addChild(faceRoot);
+    staticWireFrame->addChild(lineVisbleRoot);
+    staticWireFrame->addChild(lineHiddenRoot);
+    faceRoot->addChild(faceMaterial);
+    faceRoot->addChild(depthBufferF);
+    faceRoot->addChild(faceSet);
+    lineVisbleRoot->addChild(lineMaterial);
+    lineVisbleRoot->addChild(depthBufferL);
+    lineVisbleRoot->addChild(lineVisibleSet);
+
+    faceMaterial->diffuseColor.setValue(0, 1.0f, 0);
+    faceMaterial->transparency = 0.0f;
+    lineMaterial->diffuseColor.setValue(1.0f, 0, 0);
+
+    coords->point.setValues(0, 8, pts);
+    faceSet->coordIndex.setValues(0, 48, faceIndices);
+    lineVisibleSet->coordIndex.setValues(0, 24, lineIndices);
 }

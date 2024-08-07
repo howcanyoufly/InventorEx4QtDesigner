@@ -138,6 +138,7 @@
     <ClCompile Include="SoGLColorMaskElement.cpp" />
     <ClCompile Include="SoGradientBackground.cpp" />
     <ClCompile Include="SoSwitchToChild.cpp" />
+    <ClCompile Include="SoZoomAdaptor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h" />
@@ -148,6 +149,7 @@
     <ClInclude Include="SoGLColorMaskElement.h" />
     <ClInclude Include="SoGradientBackground.h" />
     <ClInclude Include="SoSwitchToChild.h" />
+    <ClInclude Include="SoZoomAdaptor.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

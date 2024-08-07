@@ -39,6 +39,9 @@
     <ClCompile Include="SoDeferredRender.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="SoZoomAdaptor.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="InventorEx.h">
@@ -66,6 +69,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="SoDeferredRender.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="SoZoomAdaptor.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

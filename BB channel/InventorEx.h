@@ -127,7 +127,7 @@ private:
     SoSeparator* assembleSingleBodyScene(const std::vector<ShapeData>& cuboids);
     void pointSet();
     void customPolygonOffset();
-    void lightsTest();
+    void lightTest();
     void levelOfDetail();
     void OBB();
     void outline();
@@ -143,6 +143,8 @@ private:
     void materialIndex();
     void divideTransp();
     void text2();
+    void twoLine();
+    void drtest();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
@@ -165,7 +167,7 @@ private:
     QMainWindow* m_mainwin;
 
 
-#define USE_NAVIQUARTER
+    //#define USE_NAVIQUARTER
 #ifdef USE_NAVIQUARTER
     NavQuarterWidget::Tf::NavigationWidget* m_viewer;
 #else
@@ -175,29 +177,4 @@ private:
 
     bool m_reset;// function does but plugin does not
     std::vector<ShapeData> m_randomCuboids;
-};
-
-
-class SoOITNode : public SoSeparator
-{
-    SO_NODE_HEADER(SoOITNode);
-
-public:
-    static void initClass();
-    SoOITNode();
-
-protected:
-    virtual ~SoOITNode() {};
-    virtual void GLRender(SoGLRenderAction* action) override;
-    virtual void GLRenderBelowPath(SoGLRenderAction* action) override;
-
-private:
-    // OpenGL resources related to OIT like shaders, VBOs, etc.
-    GLuint  list_build_program;
-    GLuint  head_pointer_texture;
-    // ... [Other OpenGL resources as needed]
-
-    void setupOITResources(); // This function will initialize all OpenGL resources related to OIT.
-    void cleanupOITResources(); // This function will delete and cleanup all OpenGL resources.
-
 };
