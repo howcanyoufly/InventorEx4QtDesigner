@@ -169,6 +169,10 @@ InventorEx::InventorEx(int argc, char** argv)
         {"twoLine", std::bind(&InventorEx::twoLine, this)},
         {"drtest", std::bind(&InventorEx::drtest, this)},
         {"autoZoom", std::bind(&InventorEx::autoZoom, this)},
+        {"billBoard", std::bind(&InventorEx::billBoard, this)},
+        {"texture", std::bind(&InventorEx::texture, this)},
+        {"transTypeNone", std::bind(&InventorEx::transTypeNone, this)},
+        {"snapPoint", std::bind(&InventorEx::snapPoint, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -419,7 +423,7 @@ void InventorEx::globalFlds()
     time2->addChild(drawStyle);
     SoMaterial* myMaterial2 = new SoMaterial;
     myMaterial2->diffuseColor.setValue(1.0, 1.0, 0.0);
-    myMaterial2->transparency = 0.5;
+    myMaterial2->transparency = 0.0f;
     time2->addChild(myMaterial2);
     time2->addChild(myText);
 
@@ -4214,8 +4218,31 @@ SoSeparator* InventorEx::assembleSingleBodyScene(const std::vector<ShapeData>& c
 
 void InventorEx::pointSet()
 {
-    CREATE_NODE(SoPointSet, pointSet)
-        ADD_CHILD(m_root, pointSet);
+    CREATE_NODE(SoDrawStyle, drawStyle)
+        CREATE_NODE(SoPointSet, pointSet)
+
+        SoCallback* pointSmooth = new SoCallback;
+    pointSmooth->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            glEnable(GL_POINT_SMOOTH);
+            glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
+        }
+                             });
+
+    SoCallback* pointSmoothOff = new SoCallback;
+    pointSmoothOff->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            glDisable(GL_POINT_SMOOTH);
+        }
+                                });
+
+
+    ADD_CHILD(m_root, drawStyle);
+    ADD_CHILD(m_root, pointSmooth);
+    ADD_CHILD(m_root, pointSmoothOff);
+    ADD_CHILD(m_root, pointSet);
+
+    drawStyle->pointSize = 200.0f;
 }
 
 void InventorEx::customPolygonOffset()
@@ -5138,7 +5165,7 @@ void InventorEx::divideTransp()
 
     m_root->addChild(cube2Sep); // 将第二个立方体添加到场景中
 
-    m_viewer->getSoRenderManager()->getGLRenderAction()->setNumPasses(4);
+    //m_viewer->getSoRenderManager()->getGLRenderAction()->setNumPasses(4);
     m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparencyType(SoGLRenderAction::SORTED_LAYERS_BLEND);
     //m_viewer->getSoRenderManager()->getGLRenderAction()->setSortedLayersNumPasses(4);
     //m_viewer->getSoRenderManager()->getGLRenderAction()->setTransparentDelayedObjectRenderType(SoGLRenderAction::NONSOLID_SEPARATE_BACKFACE_PASS);
@@ -5151,11 +5178,21 @@ void InventorEx::text2()
     text->string.setValue("Hello, World!");
     text->justification = SoText2::CENTER;
 
+    SoFont* textFont = new SoFont();
+    textFont->name.setValue("Arial");
+    textFont->size.setValue(120.0f);
+
     SoMaterial* mat = new SoMaterial;
     mat->diffuseColor.setValue(1, 0, 0);
-    mat->transparency = 0.2;
+    mat->transparency = 0.9;
 
+    SoGradientBackground* bc = new SoGradientBackground;
+    bc->color0 = SbColor(1.0f, 1.0f, 1.0f);
+    bc->color1 = SbColor(1.0f, 1.0f, 1.0f);
+
+    m_root->addChild(bc);
     m_root->addChild(mat);
+    m_root->addChild(textFont);
     m_root->addChild(text);
 }
 
@@ -5285,4 +5322,67 @@ void InventorEx::drtest()
     coords->point.setValues(0, 8, pts);
     faceSet->coordIndex.setValues(0, 48, faceIndices);
     lineVisibleSet->coordIndex.setValues(0, 24, lineIndices);
+}
+
+void InventorEx::billBoard()
+{
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    drawStyle->pointSize = 5.0f;
+    m_root->addChild(drawStyle);
+    SoPointSet* point = new SoPointSet;
+    m_root->addChild(point);
+}
+
+void InventorEx::texture()
+{
+    // Choose a texture
+    SoTexture2* textureNode = new SoTexture2;
+    // A 3-by-2 array of black and white pixels; the array is
+    //upside-down here (the first pixel is the lower left corner)
+    unsigned char image[] = {
+     255, 0,
+     0, 255,
+     255, 0
+    };
+    //Set the image field:
+    textureNode->image.setValue(SbVec2s(3, 2), 1, image);
+    m_root->addChild(textureNode);
+
+    SoMaterial* mat = new SoMaterial;
+    mat->diffuseColor.setValue(1, 0, 0);
+    m_root->addChild(mat);
+
+    // Make a cube
+    m_root->addChild(new SoCube);
+}
+
+void InventorEx::transTypeNone()
+{
+    SoTransparencyType* transType = new SoTransparencyType;
+    transType->value = SoTransparencyType::NONE;
+    m_root->addChild(transType);
+
+    SoShapeHints* shapeHints = new SoShapeHints;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    m_root->addChild(shapeHints);
+
+    //SoLightModel* lightModel = new SoLightModel;
+    //lightModel->model = SoLightModel::BASE_COLOR;
+    //m_root->addChild(lightModel);
+
+    SoMaterial* mat = new SoMaterial;
+    mat->diffuseColor.setValue(1, 0, 0);
+    mat->transparency = 0.5f;
+    m_root->addChild(mat);
+
+    SoCube* cube = new SoCube;
+    m_root->addChild(cube);
+
+    m_viewer->getSoRenderManager()->getGLRenderAction()->setSmoothing(TRUE);
+}
+
+void InventorEx::snapPoint()
+{
+
 }

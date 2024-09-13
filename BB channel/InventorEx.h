@@ -145,6 +145,10 @@ private:
     void text2();
     void twoLine();
     void drtest();
+    void billBoard();
+    void texture();
+    void transTypeNone();
+    void snapPoint();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
