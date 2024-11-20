@@ -52,6 +52,7 @@
 #include <Inventor/nodes/SoFragmentShader.h>
 #include <Inventor/nodes/SoShaderParameter.h>
 #include <Inventor/nodes/SoMatrixTransform.h>
+#include <Inventor/nodes/SoGeometryShader.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -172,7 +173,10 @@ InventorEx::InventorEx(int argc, char** argv)
         {"billBoard", std::bind(&InventorEx::billBoard, this)},
         {"texture", std::bind(&InventorEx::texture, this)},
         {"transTypeNone", std::bind(&InventorEx::transTypeNone, this)},
-        {"snapPoint", std::bind(&InventorEx::snapPoint, this)},
+        {"transLine", std::bind(&InventorEx::transLine, this)},
+        {"shaderParam", std::bind(&InventorEx::shaderParam, this)},
+        {"ring", std::bind(&InventorEx::ring, this)},
+        {"sectionAnalysis", std::bind(&InventorEx::sectionAnalysis, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -4857,7 +4861,7 @@ void InventorEx::shaderProgram()
 
     // 创建并设置片元着色器
     SoFragmentShader* fragmentShader = new SoFragmentShader;
-    fragmentShader->sourceProgram.setValue("perpixel_fragment_ana.glsl");
+    fragmentShader->sourceProgram.setValue("perpixel_fragment.glsl");
     shaderProgram->shaderObject.set1Value(1, fragmentShader);
 
     // 添加着色器程序到根节点
@@ -4880,12 +4884,12 @@ void InventorEx::shaderProgram()
     SoSphere* sphere = new SoSphere;
     sphere->radius = 1.2;
 
-    SoColorMask* colorMask = new SoColorMask;
-    colorMask->red = FALSE;
-    colorMask->green = FALSE;
-    colorMask->blue = FALSE;
-    colorMask->alpha = FALSE;
-    m_root->addChild(colorMask);
+    //SoColorMask* colorMask = new SoColorMask;
+    //colorMask->red = FALSE;
+    //colorMask->green = FALSE;
+    //colorMask->blue = FALSE;
+    //colorMask->alpha = FALSE;
+    //m_root->addChild(colorMask);
 
     SoDirectionalLight* myDirLight = new SoDirectionalLight;
     myDirLight->direction.setValue(0, 0, -1);
@@ -5184,13 +5188,13 @@ void InventorEx::text2()
 
     SoMaterial* mat = new SoMaterial;
     mat->diffuseColor.setValue(1, 0, 0);
-    mat->transparency = 0.9;
+    mat->transparency = 0.6;
 
-    SoGradientBackground* bc = new SoGradientBackground;
-    bc->color0 = SbColor(1.0f, 1.0f, 1.0f);
-    bc->color1 = SbColor(1.0f, 1.0f, 1.0f);
+    //SoGradientBackground* bc = new SoGradientBackground;
+    //bc->color0 = SbColor(1.0f, 1.0f, 1.0f);
+    //bc->color1 = SbColor(1.0f, 1.0f, 1.0f);
 
-    m_root->addChild(bc);
+    //m_root->addChild(bc);
     m_root->addChild(mat);
     m_root->addChild(textFont);
     m_root->addChild(text);
@@ -5382,7 +5386,282 @@ void InventorEx::transTypeNone()
     m_viewer->getSoRenderManager()->getGLRenderAction()->setSmoothing(TRUE);
 }
 
-void InventorEx::snapPoint()
+void InventorEx::transLine()
 {
+    SoMaterial* mat = new SoMaterial;
+    mat->transparency.setValue(1.0f);
 
+    float pts[8][3] = {
+    { 0.0, 0.0, 0.0 },
+    { 1.0, 0.0, 0.0 },
+    { 1.0, 1.0, 0.0 },
+    { 0.0, 1.0, 0.0 },
+    { 0.0, 0.0, 1.0 },
+    { 1.0, 0.0, 1.0 },
+    { 1.0, 1.0, 1.0 },
+    { 0.0, 1.0, 1.0 },
+    };
+    int32_t lineIndices[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    SoLightModel* lightModel = new SoLightModel;
+    SoCoordinate3* coords = new SoCoordinate3;
+    SoLineSet* lineSet = new SoLineSet;
+    SoMaterial* material = new SoMaterial;
+
+    m_root->addChild(drawStyle);
+    m_root->addChild(lightModel);
+    m_root->addChild(coords);
+    m_root->addChild(material);
+    m_root->addChild(lineSet);
+
+    drawStyle->style = SoDrawStyle::LINES;
+    drawStyle->lineWidth = 6.0f;
+    //drawStyle->linePattern.setValue(0xff00);
+    lightModel->model = SoLightModel::BASE_COLOR;
+    material->transparency = 0.5;
+    coords->point.setValues(0, 8, pts);
+    //lineSet->coordIndex.setValues(0, 24, lineIndices);
+    lineSet->numVertices.setValue(8);
 }
+
+SoShaderProgram* loadShader(int width, int height,
+                            float a1, float a2, float b1, float b2,
+                            float m1, float m2,
+                            float n11, float n12, float n13,
+                            float n21, float n22, float n23)
+{
+    SoVertexShader* vertexShader = new SoVertexShader();
+    SoGeometryShader* geometryShader = new SoGeometryShader();
+    SoFragmentShader* fragmentShader = new SoFragmentShader();
+
+    vertexShader->sourceProgram =
+        "vertexShader.glsl";
+    geometryShader->sourceProgram =
+        "geometryShader.glsl";
+    fragmentShader->sourceProgram =
+        "fragmentShader.glsl";
+
+    SoShaderProgram* shaderProgram = new SoShaderProgram;
+    shaderProgram->shaderObject.set1Value(0, vertexShader);
+    shaderProgram->shaderObject.set1Value(1, geometryShader);
+    shaderProgram->shaderObject.set1Value(2, fragmentShader);
+
+    SoShaderParameter2f* ab1 = new SoShaderParameter2f;
+    SoShaderParameter2f* ab2 = new SoShaderParameter2f;
+
+    SoShaderParameter1i* w = new SoShaderParameter1i;
+    SoShaderParameter1i* h = new SoShaderParameter1i;
+
+
+    SoShaderParameter4f* param1 = new SoShaderParameter4f;
+    SoShaderParameter4f* param2 = new SoShaderParameter4f;
+
+    w->name = "width";
+    w->value = width;
+
+    h->name = "height";
+    h->value = height;
+
+    ab1->name = "ab1";
+    ab1->value.setValue(SbVec2f(a1, b1));
+    ab2->name = "ab2";
+    ab2->value.setValue(SbVec2f(a2, b2));
+    param1->name = "param1";
+    param1->value.setValue(SbVec4f(m1, n11, n12, n13));
+    param2->name = "param2";
+    param2->value.setValue(SbVec4f(m2, n21, n22, n23));
+
+    geometryShader->parameter.set1Value(0, ab1);
+    geometryShader->parameter.set1Value(1, ab2);
+    geometryShader->parameter.set1Value(2, param1);
+    geometryShader->parameter.set1Value(3, param2);
+    geometryShader->parameter.set1Value(4, w);
+    geometryShader->parameter.set1Value(5, h);
+
+    return shaderProgram;
+}
+
+SoShaderProgram* loadShader(int width, int height, float a, float b, float m,
+                            float n1, float n2, float n3)
+{
+    return loadShader(width, height, a, a, b, b, m, m, n1, n2, n3, n1, n2, n3);
+}
+
+void InventorEx::shaderParam()
+{
+    SoShaderProgram* shaderProgram = loadShader(100, 100, 1.f, 1.f, 5.2f, 0.04f, 1.7f, 1.7f);
+
+    m_root->addChild(shaderProgram);
+}
+
+SoSeparator* createRing()
+{
+    SoSeparator* root = new SoSeparator;
+
+    // 定义圆环参数
+    const int num_major = 40; // 主圆（大圆）分段数
+    const int num_minor = 20; // 副圆（小圆）分段数
+    const float major_radius = 1.0f; // 主圆半径
+    const float minor_radius = 0.3f; // 副圆半径
+
+    const int total_vertices = num_major * num_minor;
+    SbVec3f* vertexPositions = new SbVec3f[total_vertices];
+
+    // 计算顶点坐标
+    for (int i = 0; i < num_major; ++i) {
+        float theta = 2.0f * M_PI * i / num_major;
+        float cosTheta = cos(theta);
+        float sinTheta = sin(theta);
+
+        for (int j = 0; j < num_minor; ++j) {
+            float phi = 2.0f * M_PI * j / num_minor;
+            float cosPhi = cos(phi);
+            float sinPhi = sin(phi);
+
+            float x = (major_radius + minor_radius * cosPhi) * cosTheta;
+            float y = (major_radius + minor_radius * cosPhi) * sinTheta;
+            float z = minor_radius * sinPhi;
+
+            vertexPositions[i * num_minor + j] = SbVec3f(x, y, z);
+        }
+    }
+
+    // 定义面索引
+    const int faces = (num_major) * (num_minor);
+    const int indices_per_face = 4 + 1; // 4个顶点 + 1个SO_END_FACE_INDEX
+    const int total_indices = faces * indices_per_face;
+    int* indices = new int[total_indices];
+    int idx = 0;
+
+    for (int i = 0; i < num_major; ++i) {
+        for (int j = 0; j < num_minor; ++j) {
+            int current = i * num_minor + j;
+            int next = ((i + 1) % num_major) * num_minor + j;
+            int nextMinor = i * num_minor + (j + 1) % num_minor;
+            int nextBoth = ((i + 1) % num_major) * num_minor + (j + 1) % num_minor;
+
+            indices[idx++] = current;
+            indices[idx++] = next;
+            indices[idx++] = nextBoth;
+            indices[idx++] = nextMinor;
+            indices[idx++] = SO_END_FACE_INDEX;
+        }
+    }
+
+    // 定义颜色
+    SoMaterial* myMaterials = new SoMaterial;
+    myMaterials->diffuseColor.setValue(0.0f, 0.5f, 1.0f); // 蓝色
+    root->addChild(myMaterials);
+
+    // 设置材质绑定
+    SoMaterialBinding* myMaterialBinding = new SoMaterialBinding;
+    myMaterialBinding->value = SoMaterialBinding::OVERALL;
+    root->addChild(myMaterialBinding);
+
+    // 定义顶点坐标
+    SoCoordinate3* myCoords = new SoCoordinate3;
+    myCoords->point.setValues(0, total_vertices, vertexPositions);
+    root->addChild(myCoords);
+
+    // 定义索引面集
+    SoIndexedFaceSet* myFaceSet = new SoIndexedFaceSet;
+    myFaceSet->coordIndex.setValues(0, total_indices, indices);
+    root->addChild(myFaceSet);
+
+    // 释放内存
+    delete[] vertexPositions;
+    delete[] indices;
+
+    return root;
+}
+
+void InventorEx::ring()
+{
+    SoClipPlane* clipPlane = new SoClipPlane;
+    clipPlane->plane.setValue(SbPlane(SbVec3f(0, 1, 0), -0.9));
+
+    SoShapeHints* twoSidedLighting = new SoShapeHints;
+    twoSidedLighting->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    twoSidedLighting->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+
+    SoShapeHints* backFaceCulling = new SoShapeHints;
+    backFaceCulling->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    backFaceCulling->shapeType = SoShapeHints::SOLID;
+
+    SoShapeHints* frontFaceCulling = new SoShapeHints;
+    frontFaceCulling->vertexOrdering = SoShapeHints::CLOCKWISE;
+    frontFaceCulling->shapeType = SoShapeHints::SOLID;
+
+
+    m_root->addChild(clipPlane);
+    m_root->addChild(twoSidedLighting);
+    m_root->addChild(createRing());
+}
+
+void InventorEx::sectionAnalysis()
+{
+    SoSphere* sphere = new SoSphere;
+
+    SoClipPlane* clipPlane = new SoClipPlane;
+    clipPlane->plane.setValue(SbPlane(SbVec3f(0, 0, 1), 0));
+
+    SoCallback* stencilWrite1 = new SoCallback();
+    stencilWrite1->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glStencilFunc(GL_ALWAYS, 1, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        }
+                               });
+
+    SoCallback* stencilTest1Write2 = new SoCallback();
+    stencilTest1Write2->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glStencilFunc(GL_NOTEQUAL, 0b11, 0b01);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        }
+                                    });
+
+
+    SoCallback* stencilReset = new SoCallback();
+    stencilReset->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glStencilFunc(GL_ALWAYS, 0, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        }
+                              });
+
+
+    SoShapeHints* twoSidedLighting = new SoShapeHints;
+    twoSidedLighting->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    twoSidedLighting->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+
+    SoShapeHints* backFaceCulling = new SoShapeHints;
+    backFaceCulling->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    backFaceCulling->shapeType = SoShapeHints::SOLID;
+
+    m_root->addChild(clipPlane);
+
+    // first pass
+    m_root->addChild(stencilWrite1);
+    m_root->addChild(backFaceCulling);
+    m_root->addChild(sphere);
+
+    // second pass
+    m_root->addChild(stencilTest1Write2);
+    m_root->addChild(twoSidedLighting);
+    m_root->addChild(sphere);
+
+
+
+};

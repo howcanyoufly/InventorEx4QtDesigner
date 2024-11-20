@@ -148,7 +148,10 @@ private:
     void billBoard();
     void texture();
     void transTypeNone();
-    void snapPoint();
+    void transLine();
+    void shaderParam();
+    void ring();
+    void sectionAnalysis();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
