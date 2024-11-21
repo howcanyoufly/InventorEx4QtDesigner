@@ -53,6 +53,8 @@
 #include <Inventor/nodes/SoShaderParameter.h>
 #include <Inventor/nodes/SoMatrixTransform.h>
 #include <Inventor/nodes/SoGeometryShader.h>
+#include <Inventor/nodes/SoFaceSet.h>
+#include <Inventor/nodes/SoResetTransform.h>
 #include <Inventor/engines/SoElapsedTime.h>
 #include <Inventor/events/SoMouseButtonEvent.h>
 #include <Inventor/actions/SoRayPickAction.h>
@@ -176,7 +178,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"transLine", std::bind(&InventorEx::transLine, this)},
         {"shaderParam", std::bind(&InventorEx::shaderParam, this)},
         {"ring", std::bind(&InventorEx::ring, this)},
-        {"sectionAnalysis", std::bind(&InventorEx::sectionAnalysis, this)},
+        {"section", std::bind(&InventorEx::section, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -4790,6 +4792,17 @@ void InventorEx::outline2()
             break;
     }
 
+    SoCallback* stencilInit = new SoCallback();
+    stencilInit->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glEnable(GL_STENCIL_TEST);
+            glClearStencil(0);
+            glClear(GL_STENCIL_BUFFER_BIT);
+        }
+                             });
+    m_root->addChild(stencilInit);
+
     SoSeparator* stencilWriteSep = new SoSeparator;
     stencilWriteSep->addChild(colorMask);
     //stencilWriteSep->addChild(polygonOffset);
@@ -5606,12 +5619,23 @@ void InventorEx::ring()
     m_root->addChild(createRing());
 }
 
-void InventorEx::sectionAnalysis()
+void InventorEx::section()
 {
-    SoSphere* sphere = new SoSphere;
+    SoSeparator* ring = createRing();
 
     SoClipPlane* clipPlane = new SoClipPlane;
-    clipPlane->plane.setValue(SbPlane(SbVec3f(0, 0, 1), 0));
+    clipPlane->plane.setValue(SbPlane(SbVec3f(0, 1, 0), -0.9));
+
+    SoCallback* stencilInit = new SoCallback();
+    stencilInit->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glEnable(GL_STENCIL_TEST);
+            glClearStencil(0);
+            glClear(GL_STENCIL_BUFFER_BIT);
+        }
+                             });
+    m_root->addChild(stencilInit);
 
     SoCallback* stencilWrite1 = new SoCallback();
     stencilWrite1->setCallback([](void*, SoAction* action) {
@@ -5622,15 +5646,23 @@ void InventorEx::sectionAnalysis()
         }
                                });
 
-    SoCallback* stencilTest1Write2 = new SoCallback();
-    stencilTest1Write2->setCallback([](void*, SoAction* action) {
+    SoCallback* stencilWrite0 = new SoCallback();
+    stencilWrite0->setCallback([](void*, SoAction* action) {
         if (action->isOfType(SoGLRenderAction::getClassTypeId()))
         {
-            glStencilFunc(GL_NOTEQUAL, 0b11, 0b01);
+            glStencilFunc(GL_ALWAYS, 0, 0xFF);
             glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         }
-                                    });
+                               });
 
+    SoCallback* stencilTest1 = new SoCallback();
+    stencilTest1->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            glStencilFunc(GL_EQUAL, 1, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        }
+                              });
 
     SoCallback* stencilReset = new SoCallback();
     stencilReset->setCallback([](void*, SoAction* action) {
@@ -5641,27 +5673,65 @@ void InventorEx::sectionAnalysis()
         }
                               });
 
-
     SoShapeHints* twoSidedLighting = new SoShapeHints;
     twoSidedLighting->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
     twoSidedLighting->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+
+    SoShapeHints* frontFaceCulling = new SoShapeHints;
+    frontFaceCulling->vertexOrdering = SoShapeHints::CLOCKWISE;
+    frontFaceCulling->shapeType = SoShapeHints::SOLID;
 
     SoShapeHints* backFaceCulling = new SoShapeHints;
     backFaceCulling->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
     backFaceCulling->shapeType = SoShapeHints::SOLID;
 
-    m_root->addChild(clipPlane);
+    SoLightModel* baseColor = new SoLightModel;
+    baseColor->model = SoLightModel::BASE_COLOR;
+
+    SoDepthBuffer* depthDisable = new SoDepthBuffer;
+    depthDisable->test = FALSE;
+    depthDisable->write = FALSE;
+
+    SoColorMask* colorMaskFalse = new SoColorMask;
+    colorMaskFalse->red = FALSE;
+    colorMaskFalse->green = FALSE;
+    colorMaskFalse->blue = FALSE;
+    colorMaskFalse->alpha = FALSE;
+
+    SoColorMask* colorMaskTrue = new SoColorMask;
+    colorMaskTrue->red = TRUE;
+    colorMaskTrue->green = TRUE;
+    colorMaskTrue->blue = TRUE;
+    colorMaskTrue->alpha = TRUE;
+
+    SoSeparator* clipRoot = new SoSeparator;
+    m_root->addChild(clipRoot);
+
+    clipRoot->addChild(clipPlane);
 
     // first pass
-    m_root->addChild(stencilWrite1);
-    m_root->addChild(backFaceCulling);
-    m_root->addChild(sphere);
+    clipRoot->addChild(colorMaskFalse);
+    clipRoot->addChild(stencilWrite1);
+    clipRoot->addChild(frontFaceCulling);
+    clipRoot->addChild(ring);
 
     // second pass
-    m_root->addChild(stencilTest1Write2);
+    clipRoot->addChild(colorMaskTrue);
+    clipRoot->addChild(stencilWrite0);
+    clipRoot->addChild(backFaceCulling);
+    clipRoot->addChild(ring);
+    clipRoot->addChild(stencilReset);
+
+    // third pass
+    SoCube* cube = new SoCube;
+    cube->width = 5;
+    cube->height = 5;
+    cube->depth = 5;
+
+    m_root->addChild(depthDisable);
+    m_root->addChild(stencilTest1);
     m_root->addChild(twoSidedLighting);
-    m_root->addChild(sphere);
-
-
-
+    m_root->addChild(baseColor);
+    m_root->addChild(cube);
+    m_root->addChild(stencilReset);
 };

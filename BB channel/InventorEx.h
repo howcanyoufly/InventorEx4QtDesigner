@@ -151,7 +151,7 @@ private:
     void transLine();
     void shaderParam();
     void ring();
-    void sectionAnalysis();
+    void section();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 
