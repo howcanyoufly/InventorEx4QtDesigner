@@ -67,6 +67,7 @@
 #include <Inventor/elements/SoProjectionMatrixElement.h>
 
 #include <GL/gl.h>
+#include <QOpenGLTexture>
 
 #include "SoGradientBackground.h"
 #include "SoColorMask.h"
@@ -5619,12 +5620,32 @@ void InventorEx::ring()
     m_root->addChild(createRing());
 }
 
+#include <QtSvg/QSvgRenderer>
+
+QImage RenderSvgToImage(const QString& svgPath, const QRect& targetRect)
+{
+    QImage image(WINDOWWIDTH, WINDOWHEIGHT, QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    QSvgRenderer renderer(svgPath);
+    renderer.render(&painter, targetRect);
+
+    return image;
+}
+GLuint texId = 0;
+
 void InventorEx::section()
 {
     SoSeparator* ring = createRing();
 
     SoClipPlane* clipPlane = new SoClipPlane;
-    clipPlane->plane.setValue(SbPlane(SbVec3f(0, 1, 0), -0.9));
+    clipPlane->plane.setValue(SbPlane(SbVec3f(0, 1, 0), -0.8));
+
+    SoClipPlane* clipPlane2 = new SoClipPlane;
+    clipPlane2->plane.setValue(SbPlane(SbVec3f(1, 0, 0), 0));
 
     SoCallback* stencilInit = new SoCallback();
     stencilInit->setCallback([](void*, SoAction* action) {
@@ -5655,15 +5676,6 @@ void InventorEx::section()
         }
                                });
 
-    SoCallback* stencilTest1 = new SoCallback();
-    stencilTest1->setCallback([](void*, SoAction* action) {
-        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
-        {
-            glStencilFunc(GL_EQUAL, 1, 0xFF);
-            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-        }
-                              });
-
     SoCallback* stencilReset = new SoCallback();
     stencilReset->setCallback([](void*, SoAction* action) {
         if (action->isOfType(SoGLRenderAction::getClassTypeId()))
@@ -5673,10 +5685,6 @@ void InventorEx::section()
         }
                               });
 
-    SoShapeHints* twoSidedLighting = new SoShapeHints;
-    twoSidedLighting->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
-    twoSidedLighting->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
-
     SoShapeHints* frontFaceCulling = new SoShapeHints;
     frontFaceCulling->vertexOrdering = SoShapeHints::CLOCKWISE;
     frontFaceCulling->shapeType = SoShapeHints::SOLID;
@@ -5684,13 +5692,6 @@ void InventorEx::section()
     SoShapeHints* backFaceCulling = new SoShapeHints;
     backFaceCulling->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
     backFaceCulling->shapeType = SoShapeHints::SOLID;
-
-    SoLightModel* baseColor = new SoLightModel;
-    baseColor->model = SoLightModel::BASE_COLOR;
-
-    SoDepthBuffer* depthDisable = new SoDepthBuffer;
-    depthDisable->test = FALSE;
-    depthDisable->write = FALSE;
 
     SoColorMask* colorMaskFalse = new SoColorMask;
     colorMaskFalse->red = FALSE;
@@ -5708,6 +5709,7 @@ void InventorEx::section()
     m_root->addChild(clipRoot);
 
     clipRoot->addChild(clipPlane);
+    //clipRoot->addChild(clipPlane2); // 一个圆柱，被两个裁剪面平行切出一个管状体，无法通过反面方式获取剖面
 
     // first pass
     clipRoot->addChild(colorMaskFalse);
@@ -5723,15 +5725,80 @@ void InventorEx::section()
     clipRoot->addChild(stencilReset);
 
     // third pass
-    SoCube* cube = new SoCube;
-    cube->width = 5;
-    cube->height = 5;
-    cube->depth = 5;
+    SoCallback* faceSet = new SoCallback();
+    faceSet->setCallback([](void*, SoAction* action) {
+        if (action->isOfType(SoGLRenderAction::getClassTypeId()))
+        {
+            if (0 == texId)
+            {
+                const QString ICONDIR = "../Data/counterclockwise.svg";
+                QImage image = RenderSvgToImage(ICONDIR, QRect(0, 0, WINDOWWIDTH, WINDOWHEIGHT));
+                image.save("../Data/counterclockwise.png", "PNG");
+                QOpenGLTexture* texture = new QOpenGLTexture(image.mirrored());
+                texture->setMinificationFilter(QOpenGLTexture::Nearest);
+                texture->setMagnificationFilter(QOpenGLTexture::Linear);
+                texId = texture->textureId();
+            }
 
-    m_root->addChild(depthDisable);
-    m_root->addChild(stencilTest1);
-    m_root->addChild(twoSidedLighting);
-    m_root->addChild(baseColor);
-    m_root->addChild(cube);
-    m_root->addChild(stencilReset);
+            glPushAttrib(GL_ENABLE_BIT | GL_STENCIL_BUFFER_BIT);
+
+            glStencilFunc(GL_EQUAL, 1, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+            glDisable(GL_LIGHTING);
+            glDisable(GL_DEPTH_TEST);
+
+            glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
+
+            glMatrixMode(GL_PROJECTION);
+            glPushMatrix();
+            glLoadIdentity();
+            glOrtho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f);
+
+            glMatrixMode(GL_MODELVIEW);
+            glPushMatrix();
+            glLoadIdentity();
+
+            // based color
+            glColor3f(0.89f, 0.30f, 0.35f);
+            glBegin(GL_QUADS);
+            glVertex2f(-1.f, -1.f);
+            glVertex2f(1.f, -1.f);
+            glVertex2f(1.f, 1.f);
+            glVertex2f(-1.f, 1.f);
+            glEnd();
+
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, texId);
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glBegin(GL_QUADS);
+
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+            glTexCoord2f(0.f, 0.f);
+            glVertex2f(-1.f, -1.f);
+
+            glTexCoord2f(1.f, 0.f);
+            glVertex2f(1.f, -1.f);
+
+            glTexCoord2f(1.f, 1.f);
+            glVertex2f(1.f, 1.f);
+
+            glTexCoord2f(0.f, 1.f);
+            glVertex2f(-1.f, 1.f);
+
+            glEnd();
+
+            glPopMatrix();
+            glMatrixMode(GL_PROJECTION);
+            glPopMatrix();
+            glMatrixMode(GL_MODELVIEW);
+
+            glPopAttrib();
+        }
+                         });
+    m_root->addChild(faceSet);
 };
