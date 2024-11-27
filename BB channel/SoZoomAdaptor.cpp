@@ -39,19 +39,13 @@ void SoZoomAdaptor::initClass()
     SO_ENABLE(SoGetMatrixAction, SoViewVolumeElement);
 }
 
-SbVec3f SoZoomAdaptor::getScaleVecFactor(SoAction* action) const
+float SoZoomAdaptor::getScaleFactor(SoAction* action) const
 {
-    SbVec3f scaleVec = { m_scaleVector.getValue()[0] ,m_scaleVector.getValue()[1] ,m_scaleVector.getValue()[2] };
+    SbViewportRegion view = SoViewportRegionElement::get(action->getState());
+    SbVec2s size = view.getWindowSize();
 
     SbViewVolume viewVolume = SoViewVolumeElement::get(action->getState());
-    float aspectRatio = SoViewportRegionElement::get(action->getState()).getViewportAspectRatio();
-    float scale = viewVolume.getWorldToScreenScale(SbVec3f(0.f, 0.f, 0.f), 0.1f) / (5 * aspectRatio);
-    for (int i = 0; i < 3; ++i)
-    {
-        scaleVec[i] *= scale;
-    }
-
-    return scaleVec;
+    return viewVolume.getWorldToScreenScale(SbVec3f(0.f, 0.f, 0.f), 1.f / size[0]);
 }
 
 void SoZoomAdaptor::GLRender(SoGLRenderAction* action)
@@ -62,12 +56,7 @@ void SoZoomAdaptor::GLRender(SoGLRenderAction* action)
 
 void SoZoomAdaptor::doAction(SoAction* action)
 {
-    SbVec3f vecFactor = this->getScaleVecFactor(action);
-
-    if (!m_isEqualFactor.getValue())
-    {
-        vecFactor[1] = 1.0f;
-    }
+    float scale = getScaleFactor(action);
 
     auto state = action->getState();
     SbRotation rot, scalingOrit;
@@ -75,25 +64,20 @@ void SoZoomAdaptor::doAction(SoAction* action)
     SbMatrix matrix = SoModelMatrixElement::get(action->getState());
     matrix.getTransform(trsl, rot, scaling, scalingOrit);
     matrix.multVecMatrix(SbVec3f(0, 0, 0), trsl);
-    matrix.setTransform(trsl, rot, SbVec3f(vecFactor[0], vecFactor[1], vecFactor[2]));
+    matrix.setTransform(trsl, rot, SbVec3f(scale, scale, scale));
     SoModelMatrixElement::set(state, this, matrix);
 }
 
 void SoZoomAdaptor::getMatrix(SoGetMatrixAction* action)
 {
-    SbVec3f vecFactor = this->getScaleVecFactor(action);
-
-    if (!m_isEqualFactor.getValue())
-    {
-        vecFactor[1] = 1.0f;
-    }
+    float scale = getScaleFactor(action);
 
     SbMatrix& matrix = action->getMatrix();
     SbRotation rot, scalingOrit;
     SbVec3f scaling, trsl;
     matrix.getTransform(trsl, rot, scaling, scalingOrit);
     matrix.multVecMatrix(SbVec3f(0, 0, 0), trsl);
-    matrix.setTransform(trsl, rot, SbVec3f(vecFactor[0], vecFactor[1], vecFactor[2]));
+    matrix.setTransform(trsl, rot, SbVec3f(scale, scale, scale));
     action->getInverse() = matrix.inverse();
 }
 

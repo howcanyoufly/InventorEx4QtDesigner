@@ -37,7 +37,7 @@ protected:
     virtual void callback(SoCallbackAction* action);
     virtual void pick(SoPickAction* action);
 
-    SbVec3f getScaleVecFactor(SoAction*) const;
+    float getScaleFactor(SoAction*) const;
 
 public:
     SoSFBool m_isEqualFactor;

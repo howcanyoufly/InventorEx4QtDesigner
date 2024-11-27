@@ -152,6 +152,7 @@ private:
     void shaderParam();
     void ring();
     void section();
+    void getWorldToScreenScale();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 

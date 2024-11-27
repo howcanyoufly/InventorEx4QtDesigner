@@ -180,6 +180,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"shaderParam", std::bind(&InventorEx::shaderParam, this)},
         {"ring", std::bind(&InventorEx::ring, this)},
         {"section", std::bind(&InventorEx::section, this)},
+        {"getWorldToScreenScale", std::bind(&InventorEx::getWorldToScreenScale, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -5802,3 +5803,16 @@ void InventorEx::section()
                          });
     m_root->addChild(faceSet);
 };
+
+void InventorEx::getWorldToScreenScale()
+{
+    SoOrthographicCamera* camera = new SoOrthographicCamera;
+    m_root->addChild(camera);
+
+    SoZoomAdaptor* autoZoom = new SoZoomAdaptor;
+    m_root->addChild(autoZoom);
+
+    SoSphere* sphere = new SoSphere;
+    sphere->radius = WINDOWHEIGHT / 2.f;
+    m_root->addChild(sphere);
+}
