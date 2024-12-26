@@ -181,6 +181,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"ring", std::bind(&InventorEx::ring, this)},
         {"section", std::bind(&InventorEx::section, this)},
         {"getWorldToScreenScale", std::bind(&InventorEx::getWorldToScreenScale, this)},
+        {"dynamicCSYS", std::bind(&InventorEx::dynamicCSYS, this)},
         // plugin
         {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -4834,7 +4835,6 @@ void InventorEx::autoZoom()
     trans->matrix.setValue(mat);
 
     SoZoomAdaptor* zoomAdaptor = new SoZoomAdaptor;
-    zoomAdaptor->m_isEqualFactor = true;
 
     SoMaterial* matR = new SoMaterial;
     matR->diffuseColor.setValue(1.0f, 0.0f, 0.0f);
@@ -5802,6 +5802,173 @@ void InventorEx::section()
         }
                          });
     m_root->addChild(faceSet);
+
+
+    /*!
+     * \brief Callback for copying stencil from default FBO to a texture via glBlitFramebuffer
+     */
+    SoCallback* sectionLine = new SoCallback();
+    sectionLine->setCallback([](void*, SoAction* action) {
+        if (!action->isOfType(SoGLRenderAction::getClassTypeId())) {
+            return;
+        }
+
+        SoGLRenderAction* glRenderAction = static_cast<SoGLRenderAction*>(action);
+        const SbViewportRegion& vp = glRenderAction->getViewportRegion();
+        SbVec2s size = vp.getViewportSizePixels();
+        int width = size[0];
+        int height = size[1];
+
+        // 1) 准备静态资源
+        //    s_myStencilFbo: 目标FBO
+        //    s_stencilTexId: 贴在 s_myStencilFbo 上的 stencil纹理
+        static GLuint s_myStencilFbo = 0;
+        static GLuint s_stencilTexId = 0;
+
+        static const cc_glglue* globalGlue = nullptr;
+        static PFNGLGENFRAMEBUFFERSPROC glGenFramebuffersFunc = nullptr;
+        static PFNGLBINDBUFFERARBPROC glBindBufferARBFunc = nullptr;
+        static PFNGLDELETEBUFFERSARBPROC glDeleteFramebuffersARBFunc = nullptr;
+        static PFNGLBLITFRAMEBUFFERPROC glBlitFramebufferFunc = nullptr;
+        static PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2DFunc = nullptr;
+        static PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatusFunc = nullptr;
+        if (!globalGlue)
+        {
+            globalGlue = cc_glglue_instance(glRenderAction->getCacheContext());
+        }
+        if (!glGenFramebuffersFunc)
+        {
+            glGenFramebuffersFunc = (PFNGLGENFRAMEBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glGenFramebuffers");
+        }
+        if (!glBindBufferARBFunc)
+        {
+            glBindBufferARBFunc = (PFNGLBINDBUFFERARBPROC)cc_glglue_getprocaddress(globalGlue, "glBindBufferARB");
+        }
+        if (!glDeleteFramebuffersARBFunc)
+        {
+            glDeleteFramebuffersARBFunc = (PFNGLDELETEBUFFERSARBPROC)cc_glglue_getprocaddress(globalGlue, "glDeleteFramebuffersARB");
+        }
+        if (!glBlitFramebufferFunc)
+        {
+            glBlitFramebufferFunc = (PFNGLBLITFRAMEBUFFERPROC)cc_glglue_getprocaddress(globalGlue, "glBlitFramebuffer");
+        }
+        if (!glFramebufferTexture2DFunc)
+        {
+            glFramebufferTexture2DFunc = (PFNGLFRAMEBUFFERTEXTURE2DPROC)cc_glglue_getprocaddress(globalGlue, "glFramebufferTexture2D");
+        }
+        if (!glCheckFramebufferStatusFunc)
+        {
+            glCheckFramebufferStatusFunc = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)cc_glglue_getprocaddress(globalGlue, "glCheckFramebufferStatus");
+        }
+
+        // 视情况存储当前viewport尺寸, 当窗口大小变化时, 可能要重新创建纹理
+        static int s_texWidth = 0;
+        static int s_texHeight = 0;
+
+        // 仅当FBO或纹理未创建, 或size变化时, 重新创建
+        if (s_myStencilFbo == 0 || width != s_texWidth || height != s_texHeight) {
+            // 如果已经有旧FBO, 清理
+            if (s_myStencilFbo) {
+                glDeleteFramebuffersARBFunc(1, &s_myStencilFbo);
+                glDeleteTextures(1, &s_stencilTexId);
+                s_myStencilFbo = 0;
+                s_stencilTexId = 0;
+            }
+
+            // 创建 stencil 纹理
+            glGenTextures(1, &s_stencilTexId);
+            glBindTexture(GL_TEXTURE_2D, s_stencilTexId);
+
+            // 基础过滤
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            // 分配纹理存储: 这里仅使用 stencil, 即 GL_STENCIL_INDEX8
+            //  如果驱动对纯stencil纹理支持有问题, 可以改用 GL_DEPTH24_STENCIL8
+            //  并绑定到 GL_DEPTH_STENCIL_ATTACHMENT
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                GL_STENCIL_INDEX8,  // internal format
+                width, height,
+                0,
+                GL_STENCIL_INDEX,   // external format
+                GL_UNSIGNED_BYTE,
+                nullptr             // no data upload
+            );
+
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            // 创建FBO
+            glGenFramebuffersFunc(1, &s_myStencilFbo);
+            glBindBufferARBFunc(GL_FRAMEBUFFER, s_myStencilFbo);
+
+            // 把s_stencilTexId 作为 stencil attachment
+            glFramebufferTexture2DFunc(
+                GL_FRAMEBUFFER,
+                GL_STENCIL_ATTACHMENT,
+                GL_TEXTURE_2D,
+                s_stencilTexId,
+                0
+            );
+
+            // 若需要 color attachment, 可加一个 dummy color tex
+            // 这里示例中仅使用 stencil, 要让FBO有完整状态, 最好也加一个color att
+            // 否则某些驱动会报 FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT
+            GLuint colorDummy = 0;
+            glGenTextures(1, &colorDummy);
+            glBindTexture(GL_TEXTURE_2D, colorDummy);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glFramebufferTexture2DFunc(GL_FRAMEBUFFER,
+                                       GL_COLOR_ATTACHMENT0,
+                                       GL_TEXTURE_2D,
+                                       colorDummy,
+                                       0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            // 检查完整性
+            GLenum fboStatus = glCheckFramebufferStatusFunc(GL_FRAMEBUFFER);
+            if (fboStatus != GL_FRAMEBUFFER_COMPLETE) {
+                SoDebugError::post("sectionLine", "FBO incomplete! Status=0x%x", fboStatus);
+            }
+
+            glBindBufferARBFunc(GL_FRAMEBUFFER, 0);
+
+            s_texWidth = width;
+            s_texHeight = height;
+        }
+
+        // 2) 做 glBlitFramebuffer
+        //    srcFbo: Coin3D绘制好的FBO, 如果你用QOpenGLWidget, 常常 srcFbo = this->defaultFramebufferObject(),
+        //    这里直接用0(系统framebuffer)做演示(可能需要修改)
+        GLuint srcFbo = 0; // or glRenderAction->getCacheContextFBOID() if you can get it
+
+        // 绑定 read/draw
+        glBindBufferARBFunc(GL_READ_FRAMEBUFFER, srcFbo);
+        glBindBufferARBFunc(GL_DRAW_FRAMEBUFFER, s_myStencilFbo);
+
+        // 把 stencil 复制到 s_myStencilFbo 的 stencil attachment
+        glBlitFramebufferFunc(
+            0, 0, width, height,  // src rect
+            0, 0, width, height,  // dst rect
+            GL_STENCIL_BUFFER_BIT,
+            GL_NEAREST
+        );
+
+        // 解绑定
+        glBindBufferARBFunc(GL_FRAMEBUFFER, 0);
+
+        // 到这里, s_stencilTexId中已经有了最新的 stencil 数据(纯GPU),
+        // 你可以在后续 pass 的着色器里, sampler2D uniform 绑定 s_stencilTexId, 
+        // 然后做 "texture(stencilTex, uv)" 来访问 0/1/其它 stencil 值.
+
+        // (剩下就看你如何做一个屏幕空间 pass 了)
+                             });
+    m_root->addChild(sectionLine);
+
 };
 
 void InventorEx::getWorldToScreenScale()
@@ -5816,3 +5983,253 @@ void InventorEx::getWorldToScreenScale()
     sphere->radius = WINDOWHEIGHT / 2.f;
     m_root->addChild(sphere);
 }
+
+// Constants for dimensions
+const float AXIS_LENGTH = 80.0f;
+const float ARROW_HEIGHT = 16.0f;
+const float TEXT_OFFSET = 6.0f;
+const float ORIGIN_SPHERE_RADIUS = 8.0f;
+const float AXIS_LOWER_RADIUS = 1.5f;
+const float AXIS_UPPER_RADIUS = 2.5f;
+const float ARROW_RADIUS = 6.0f;
+const int AXIS_SEGMENTS = 20;
+const float RING_RADIUS = 64.0f;
+const float TUBE_RADIUS = 1.5f;
+const int RING_SEGMENTS = 20;
+const int TUBE_SEGMENTS = 20;
+const float START_ANGLE = 0.0f;
+const float END_ANGLE = M_PI_2;
+
+// Function to create a reusable axis node (includes line and arrow)
+SoSeparator* createAxisNode() {
+    SoSeparator* axisNode = new SoSeparator;
+
+    // Create coordinates for the truncated cone (axis line)
+    SoCoordinate3* axisCoords = new SoCoordinate3;
+    std::vector<SbVec3f> coords;
+
+    for (int i = 0; i < AXIS_SEGMENTS; ++i) {
+        float angle = 2.0f * M_PI * i / AXIS_SEGMENTS;
+        float xLower = AXIS_LOWER_RADIUS * cos(angle);
+        float yLower = AXIS_LOWER_RADIUS * sin(angle);
+        coords.push_back(SbVec3f(xLower, yLower, 0));
+
+        float xUpper = AXIS_UPPER_RADIUS * cos(angle);
+        float yUpper = AXIS_UPPER_RADIUS * sin(angle);
+        coords.push_back(SbVec3f(xUpper, yUpper, AXIS_LENGTH));
+    }
+
+    axisCoords->point.setValues(0, coords.size(), coords.data());
+    axisNode->addChild(axisCoords);
+
+    // Define faces for the truncated cone
+    SoIndexedFaceSet* axisFaceSet = new SoIndexedFaceSet;
+    std::vector<int32_t> indices;
+    for (int i = 0; i < AXIS_SEGMENTS; ++i) {
+        int next = (i + 1) % AXIS_SEGMENTS;
+
+        // Corrected vertex order (counter-clockwise when viewed from outside)
+        indices.push_back(i * 2);           // Current lower circle point
+        indices.push_back(next * 2);        // Next lower circle point
+        indices.push_back(next * 2 + 1);    // Next upper circle point
+        indices.push_back(i * 2 + 1);       // Current upper circle point
+        indices.push_back(-1);              // End of face
+    }
+    axisFaceSet->coordIndex.setValues(0, indices.size(), indices.data());
+    axisNode->addChild(axisFaceSet);
+
+    // Create arrowhead using SoCone
+    SoCone* arrowCone = new SoCone;
+    arrowCone->bottomRadius = ARROW_RADIUS;
+    arrowCone->height = ARROW_HEIGHT;
+
+    // Position and rotate the arrowhead
+    SoTransform* arrowTransform = new SoTransform;
+    arrowTransform->translation.setValue(0, 0, AXIS_LENGTH + ARROW_HEIGHT / 2);
+    arrowTransform->rotation.setValue(SbVec3f(1, 0, 0), M_PI_2);
+
+    SoSeparator* arrowSep = new SoSeparator;
+    arrowSep->addChild(arrowTransform);
+    arrowSep->addChild(arrowCone);
+
+    axisNode->addChild(arrowSep);
+
+    return axisNode;
+}
+
+// Function to create a reusable arc node
+SoSeparator* createArcNode() {
+    SoSeparator* arcNode = new SoSeparator;
+
+    // Create coordinates for the arc
+    SoCoordinate3* arcCoords = new SoCoordinate3;
+    std::vector<SbVec3f> coords;
+
+    // Generate points for the torus segment (arc with circular cross-section)
+    for (int i = 0; i <= RING_SEGMENTS; ++i) {
+        float ringAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * i / RING_SEGMENTS;
+
+        for (int j = 0; j <= TUBE_SEGMENTS; ++j) {
+            float tubeAngle = 2.0f * M_PI * j / TUBE_SEGMENTS;
+            float x = (RING_RADIUS + TUBE_RADIUS * cos(tubeAngle)) * cos(ringAngle);
+            float y = (RING_RADIUS + TUBE_RADIUS * cos(tubeAngle)) * sin(ringAngle);
+            float z = TUBE_RADIUS * sin(tubeAngle);
+            coords.push_back(SbVec3f(x, y, z));
+        }
+    }
+
+    arcCoords->point.setValues(0, coords.size(), coords.data());
+    arcNode->addChild(arcCoords);
+
+    // Define faces for the arc
+    SoIndexedFaceSet* arcFaceSet = new SoIndexedFaceSet;
+    std::vector<int32_t> indices;
+
+    int ptsPerRing = TUBE_SEGMENTS + 1;
+
+    for (int i = 0; i < RING_SEGMENTS; ++i) {
+        for (int j = 0; j < TUBE_SEGMENTS; ++j) {
+            int idx0 = i * ptsPerRing + j;
+            int idx1 = idx0 + ptsPerRing;
+            int idx2 = idx1 + 1;
+            int idx3 = idx0 + 1;
+
+            indices.push_back(idx0);
+            indices.push_back(idx1);
+            indices.push_back(idx2);
+            indices.push_back(idx3);
+            indices.push_back(-1);
+        }
+    }
+
+    arcFaceSet->coordIndex.setValues(0, indices.size(), indices.data());
+    arcNode->addChild(arcFaceSet);
+
+    return arcNode;
+}
+
+// Main function to construct the dynamic coordinate system
+void InventorEx::dynamicCSYS()
+{
+    // Create root node
+    SoSeparator* root = new SoSeparator;
+
+    root->addChild(new SoZoomAdaptor);
+
+    // Create origin sphere
+    SoSphere* originSphere = new SoSphere;
+    originSphere->radius = ORIGIN_SPHERE_RADIUS;
+    root->addChild(originSphere);
+
+    // Create reusable axis node (line and arrow)
+    SoSeparator* axisNode = createAxisNode();
+
+    // Font for axis labels
+    SoFont* font = new SoFont;
+    font->name.setValue("Arial");
+
+    HDC hdc = GetDC(NULL);
+    int vertRes = GetDeviceCaps(hdc, VERTRES);
+    ReleaseDC(NULL, hdc);
+    font->size.setValue(16 * vertRes / 1080.0f);
+
+    // Total offset for label position
+    const float LABEL_POSITION = AXIS_LENGTH + ARROW_HEIGHT + TEXT_OFFSET;
+
+    // Create X-axis
+    SoSeparator* xAxis = new SoSeparator;
+    SoRotation* xRotation = new SoRotation;
+    xRotation->rotation.setValue(SbVec3f(0, 1, 0), M_PI_2);
+    xAxis->addChild(xRotation);
+    xAxis->addChild(axisNode);
+
+    // Add label for X-axis
+    SoTransform* xTextTransform = new SoTransform;
+    xTextTransform->translation.setValue(0, 0, LABEL_POSITION);
+
+    SoText2* xAxisText = new SoText2;
+    xAxisText->justification = SoText2::CENTER;
+    xAxisText->string.setValue("X");
+
+    SoSeparator* xTextSep = new SoSeparator;
+    xTextSep->addChild(xTextTransform);
+    xTextSep->addChild(font);
+    xTextSep->addChild(xAxisText);
+
+    xAxis->addChild(xTextSep);
+    root->addChild(xAxis);
+
+    // Create Y-axis
+    SoSeparator* yAxis = new SoSeparator;
+    SoRotation* yRotation = new SoRotation;
+    yRotation->rotation.setValue(SbVec3f(1, 0, 0), -M_PI_2);
+    yAxis->addChild(yRotation);
+    yAxis->addChild(axisNode);
+
+    // Add label for Y-axis
+    SoTransform* yTextTransform = new SoTransform;
+    yTextTransform->translation.setValue(0, 0, LABEL_POSITION);
+
+    SoText2* yAxisText = new SoText2;
+    yAxisText->justification = SoText2::CENTER;
+    yAxisText->string.setValue("Y");
+
+    SoSeparator* yTextSep = new SoSeparator;
+    yTextSep->addChild(yTextTransform);
+    yTextSep->addChild(font);
+    yTextSep->addChild(yAxisText);
+
+    yAxis->addChild(yTextSep);
+    root->addChild(yAxis);
+
+    // Create Z-axis
+    SoSeparator* zAxis = new SoSeparator;
+    // No rotation needed for Z-axis
+    zAxis->addChild(axisNode);
+
+    // Add label for Z-axis
+    SoTransform* zTextTransform = new SoTransform;
+    zTextTransform->translation.setValue(0, 0, LABEL_POSITION);
+
+    SoText2* zAxisText = new SoText2;
+    zAxisText->justification = SoText2::CENTER;
+    zAxisText->string.setValue("Z");
+
+    SoSeparator* zTextSep = new SoSeparator;
+    zTextSep->addChild(zTextTransform);
+    zTextSep->addChild(font);
+    zTextSep->addChild(zAxisText);
+
+    zAxis->addChild(zTextSep);
+    root->addChild(zAxis);
+
+    // Create reusable arc node
+    SoSeparator* arcNode = createArcNode();
+
+    // Create arc in XY plane
+    SoSeparator* xyArc = new SoSeparator;
+    // No rotation needed for XY plane
+    xyArc->addChild(arcNode);
+    root->addChild(xyArc);
+
+    // Create arc in YZ plane
+    SoSeparator* yzArc = new SoSeparator;
+    SoRotation* yzRotation = new SoRotation;
+    yzRotation->rotation.setValue(SbVec3f(1, 0, 0), M_PI_2);
+    yzArc->addChild(yzRotation);
+    yzArc->addChild(arcNode);
+    root->addChild(yzArc);
+
+    // Create arc in XZ plane
+    SoSeparator* xzArc = new SoSeparator;
+    SoRotation* xzRotation = new SoRotation;
+    xzRotation->rotation.setValue(SbVec3f(0, 1, 0), -M_PI_2);
+    xzArc->addChild(xzRotation);
+    xzArc->addChild(arcNode);
+    root->addChild(xzArc);
+
+    // Add the constructed root node to the scene
+    m_root->addChild(root);
+}
+
+

@@ -153,6 +153,7 @@ private:
     void ring();
     void section();
     void getWorldToScreenScale();
+    void dynamicCSYS();
     // SoLazyElement, SoState, SoGLRenderAction and openGL state
 
 

@@ -12,21 +12,27 @@ Date            Name        Description of Change
 2023/10/07      WH          Modify scale
 ==========================================================================*/
 #include "SoZoomAdaptor.h"
-#include "Inventor/elements/SoViewVolumeElement.h"
-#include "Inventor/elements/SoViewportRegionElement.h"
-#include "Inventor/actions/SoAction.h"
-#include "Inventor/actions/SoGetMatrixAction.h"
-#include "Inventor/SbRotation.h"
-#include "Inventor/SbMatrix.h"
-#include "Inventor/elements/SoModelMatrixElement.h"
+#include <windows.h>
+
+#include <Inventor/actions/SoAction.h>
+#include <Inventor/actions/SoGetMatrixAction.h>
+#include <Inventor/elements/SoModelMatrixElement.h>
+#include <Inventor/elements/SoViewVolumeElement.h>
+#include <Inventor/elements/SoViewportRegionElement.h>
+#include <Inventor/SbRotation.h>
+#include <Inventor/SbMatrix.h>
 
 SO_NODE_SOURCE(SoZoomAdaptor)
 
 SoZoomAdaptor::SoZoomAdaptor()
 {
     SO_NODE_CONSTRUCTOR(SoZoomAdaptor);
-    SO_NODE_ADD_FIELD(m_scaleVector, ({ 1.0f,1.0f,1.0f }));
-    SO_NODE_ADD_FIELD(m_isEqualFactor, (true));
+    SO_NODE_ADD_FIELD(m_pixelType, (DESIGNED));
+
+    SO_NODE_DEFINE_ENUM_VALUE(PixelType, DESIGNED);
+    SO_NODE_DEFINE_ENUM_VALUE(PixelType, REAL);
+    SO_NODE_SET_SF_ENUM_TYPE(m_pixelType, PixelType);
+
 }
 
 SoZoomAdaptor::~SoZoomAdaptor()
@@ -45,7 +51,17 @@ float SoZoomAdaptor::getScaleFactor(SoAction* action) const
     SbVec2s size = view.getWindowSize();
 
     SbViewVolume viewVolume = SoViewVolumeElement::get(action->getState());
-    return viewVolume.getWorldToScreenScale(SbVec3f(0.f, 0.f, 0.f), 1.f / size[0]);
+
+    float factorOnePixel = 1.0f;
+    if (DESIGNED == m_pixelType.getValue())
+    {
+        HDC hdc = GetDC(NULL);
+        int vertRes = GetDeviceCaps(hdc, VERTRES);
+        ReleaseDC(NULL, hdc);
+        factorOnePixel = vertRes / 1080.0f;
+    }
+
+    return viewVolume.getWorldToScreenScale(SbVec3f(0.f, 0.f, 0.f), factorOnePixel / size[0]);
 }
 
 void SoZoomAdaptor::GLRender(SoGLRenderAction* action)

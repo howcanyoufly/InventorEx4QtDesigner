@@ -16,6 +16,7 @@ Date            Name        Description of Change
 #include <Inventor/nodes/SoTransformation.h>
 #include <Inventor/fields/SoSFFloat.h>
 #include <Inventor/fields/SoSFBool.h>
+#include "Inventor/fields/SoSFEnum.h"
 #include <Inventor/fields/SoSFVec3f.h>
 
 class SoZoomAdaptor : public SoTransformation
@@ -24,6 +25,12 @@ class SoZoomAdaptor : public SoTransformation
     SO_NODE_HEADER(SoZoomAdaptor);
 
 public:
+    enum PixelType
+    {
+        DESIGNED,
+        REAL
+    };
+
     static void initClass();
     SoZoomAdaptor();
 
@@ -40,7 +47,6 @@ protected:
     float getScaleFactor(SoAction*) const;
 
 public:
-    SoSFBool m_isEqualFactor;
-    SoSFVec3f m_scaleVector;
+    SoSFEnum m_pixelType;
 };
 #endif // SO_ZOOM_ADAPTOR_H
