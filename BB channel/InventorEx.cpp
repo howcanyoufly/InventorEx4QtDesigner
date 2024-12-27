@@ -5969,6 +5969,13 @@ void InventorEx::section()
                 s_stencilTexId = 0;
             }
 
+            std::string ext = (const char*)(glGetString(GL_EXTENSIONS));
+            if (std::string::npos == ext.find("GL_ARB_stencil_texturing"))
+            {
+                SoDebugError::post("sectionLine", "GL_ARB_stencil_texturing not supported!");
+                return;
+            }
+
             // 创建 stencil 纹理
             glGenTextures(1, &s_stencilTexId);
             glBindTexture(GL_TEXTURE_2D, s_stencilTexId);
@@ -5979,19 +5986,35 @@ void InventorEx::section()
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+            glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_STENCIL_INDEX);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_ALWAYS);
+
+
             // 分配纹理存储: 这里仅使用 stencil, 即 GL_STENCIL_INDEX8
             //  如果驱动对纯stencil纹理支持有问题, 可以改用 GL_DEPTH24_STENCIL8
             //  并绑定到 GL_DEPTH_STENCIL_ATTACHMENT
+            //glTexImage2D(
+            //    GL_TEXTURE_2D,
+            //    0,
+            //    GL_STENCIL_INDEX8,  // internal format
+            //    width, height,
+            //    0,
+            //    GL_STENCIL_INDEX,   // external format
+            //    GL_UNSIGNED_BYTE,
+            //    nullptr             // no data upload
+            //);
             glTexImage2D(
                 GL_TEXTURE_2D,
                 0,
-                GL_STENCIL_INDEX8,  // internal format
+                GL_DEPTH24_STENCIL8,
                 width, height,
                 0,
-                GL_STENCIL_INDEX,   // external format
-                GL_UNSIGNED_BYTE,
-                nullptr             // no data upload
+                GL_DEPTH_STENCIL,
+                GL_UNSIGNED_INT_24_8,
+                nullptr
             );
+
 
             glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -6035,6 +6058,41 @@ void InventorEx::section()
             s_texHeight = height;
         }
 
+        // 1) 创建 FBO + Color Texture (而不绑定 stencil)
+        static GLuint s_colorFbo = 0;
+        static GLuint s_colorTex = 0;
+
+        if (s_colorFbo == 0) {
+            glGenTextures(1, &s_colorTex);
+            glBindTexture(GL_TEXTURE_2D, s_colorTex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                GL_RGBA8,  // internal format
+                width, height,
+                0,
+                GL_RGBA,  // external format
+                GL_UNSIGNED_BYTE,
+                nullptr
+            );
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            glGenFramebuffersFunc(1, &s_colorFbo);
+            glBindFramebufferFunc(GL_FRAMEBUFFER, s_colorFbo);
+            glFramebufferTexture2DFunc(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                       GL_TEXTURE_2D, s_colorTex, 0);
+
+            GLenum fboStatus = glCheckFramebufferStatusFunc(GL_FRAMEBUFFER);
+            if (fboStatus != GL_FRAMEBUFFER_COMPLETE) {
+                SoDebugError::post("testColorTex", "FBO incomplete! status=0x%x", fboStatus);
+            }
+            glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
+        }
         // 2) 做 glBlitFramebuffer
         //    srcFbo: Coin3D绘制好的FBO, 如果你用QOpenGLWidget, 常常 srcFbo = this->defaultFramebufferObject(),
         //    这里直接用0(系统framebuffer)做演示(可能需要修改)
@@ -6056,6 +6114,22 @@ void InventorEx::section()
 
         // 解绑定
         glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
+
+        // 2) 把默认FBO的 Color 拷贝过来
+        //   srcFbo: 0 or QOpenGLWidget->defaultFramebufferObject()
+        //   dstFbo: s_colorFbo
+        glBindFramebufferFunc(GL_READ_FRAMEBUFFER, srcFbo);
+        glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, s_colorFbo);
+
+        glBlitFramebufferFunc(
+            0, 0, width, height,
+            0, 0, width, height,
+            GL_COLOR_BUFFER_BIT,
+            GL_NEAREST
+        );
+
+        glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
+
 
         // 到这里, s_stencilTexId中已经有了最新的 stencil 数据(纯GPU),
         // 你可以在后续 pass 的着色器里, sampler2D uniform 绑定 s_stencilTexId, 
@@ -6100,29 +6174,32 @@ void InventorEx::section()
                 // 这里我们只做简单4邻域判断(上下左右)
                 void main()
                 {
-                    // 当前像素的 stencil
-                    float center = texture(uStencilTex, vUV).r;
-                    // uv到像素坐标要乘 viewportSize
-                    // 但是如果只想用相对偏移，也可以： 1.0 / viewportSize.x
-                    float px = 1.0 / uViewportSize.x; 
-                    float py = 1.0 / uViewportSize.y;
+                    //// 当前像素的 stencil
+                    //float center = texture(uStencilTex, vUV).r;
+                    //// uv到像素坐标要乘 viewportSize
+                    //// 但是如果只想用相对偏移，也可以： 1.0 / viewportSize.x
+                    //float px = 1.0 / uViewportSize.x; 
+                    //float py = 1.0 / uViewportSize.y;
 
-                    float left   = texture(uStencilTex, vUV + vec2(-px,    0.0)).r;
-                    float right  = texture(uStencilTex, vUV + vec2( px,    0.0)).r;
-                    float up     = texture(uStencilTex, vUV + vec2( 0.0,  py )).r;
-                    float down   = texture(uStencilTex, vUV + vec2( 0.0, -py )).r;
+                    //float left   = texture(uStencilTex, vUV + vec2(-px,    0.0)).r;
+                    //float right  = texture(uStencilTex, vUV + vec2( px,    0.0)).r;
+                    //float up     = texture(uStencilTex, vUV + vec2( 0.0,  py )).r;
+                    //float down   = texture(uStencilTex, vUV + vec2( 0.0, -py )).r;
 
-                    float diff = 0.0;
-                    diff += abs(center - left);
-                    diff += abs(center - right);
-                    diff += abs(center - up);
-                    diff += abs(center - down);
+                    //float diff = 0.0;
+                    //diff += abs(center - left);
+                    //diff += abs(center - right);
+                    //diff += abs(center - up);
+                    //diff += abs(center - down);
 
-                    // 如果周边存在 0->1 或 1->0 的差异，就认为是轮廓
-                    if(diff > 0.001)
-                        FragColor = uLineColor;       // 画线色
-                    else
-                        FragColor = vec4(0,0,0,0);    // 透明
+                    //// 如果周边存在 0->1 或 1->0 的差异，就认为是轮廓
+                    //if(diff > 0.001)
+                    //    FragColor = uLineColor;       // 画线色
+                    //else
+                    //    FragColor = vec4(0,0,0,0);    // 透明
+
+                    float val = texture(uStencilTex, vUV).r; 
+                    FragColor = vec4(val, val, val, 1.0); // 直接把采样的值映射成灰度
                 }
             )";
 
@@ -6211,7 +6288,7 @@ void InventorEx::section()
 
         // 5) 绑定刚才我们复制好的 stencilTex
         glActiveTextureFunc(GL_TEXTURE0 + 0);
-        glBindTexture(GL_TEXTURE_2D, s_stencilTexId);
+        glBindTexture(GL_TEXTURE_2D, s_stencilTexId/*s_colorTex*/);
 
         // 6) 绘制全屏三角形 / 四边形
         glBindVertexArrayFunc(vao);
