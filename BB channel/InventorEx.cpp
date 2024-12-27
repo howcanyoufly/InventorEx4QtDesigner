@@ -5801,14 +5801,13 @@ void InventorEx::section()
             glPopAttrib();
         }
                          });
-    m_root->addChild(faceSet);
-
+    //m_root->addChild(faceSet);
 
     /*!
      * \brief Callback for copying stencil from default FBO to a texture via glBlitFramebuffer
      */
     SoCallback* sectionLine = new SoCallback();
-    sectionLine->setCallback([](void*, SoAction* action) {
+    sectionLine->setCallback([](void* userData, SoAction* action) {
         if (!action->isOfType(SoGLRenderAction::getClassTypeId())) {
             return;
         }
@@ -5819,19 +5818,34 @@ void InventorEx::section()
         int width = size[0];
         int height = size[1];
 
-        // 1) 准备静态资源
-        //    s_myStencilFbo: 目标FBO
-        //    s_stencilTexId: 贴在 s_myStencilFbo 上的 stencil纹理
-        static GLuint s_myStencilFbo = 0;
-        static GLuint s_stencilTexId = 0;
-
         static const cc_glglue* globalGlue = nullptr;
         static PFNGLGENFRAMEBUFFERSPROC glGenFramebuffersFunc = nullptr;
-        static PFNGLBINDBUFFERARBPROC glBindBufferARBFunc = nullptr;
-        static PFNGLDELETEBUFFERSARBPROC glDeleteFramebuffersARBFunc = nullptr;
+        static PFNGLBINDFRAMEBUFFERPROC glBindFramebufferFunc = nullptr;
+        static PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffersFunc = nullptr;
         static PFNGLBLITFRAMEBUFFERPROC glBlitFramebufferFunc = nullptr;
         static PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2DFunc = nullptr;
         static PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatusFunc = nullptr;
+        static PFNGLCREATESHADERPROC glCreateShaderFunc = nullptr;
+        static PFNGLCREATEPROGRAMPROC glCreateProgramFunc = nullptr;
+        static PFNGLSHADERSOURCEPROC glShaderSourceFunc = nullptr;
+        static PFNGLCOMPILESHADERPROC glCompileShaderFunc = nullptr;
+        static PFNGLATTACHSHADERPROC glAttachShaderFunc = nullptr;
+        static PFNGLLINKPROGRAMPROC glLinkProgramFunc = nullptr;
+        static PFNGLDELETESHADERPROC glDeleteShaderFunc = nullptr;
+        static PFNGLGENVERTEXARRAYSPROC glGenVertexArraysFunc = nullptr;
+        static PFNGLBINDVERTEXARRAYPROC glBindVertexArrayFunc = nullptr;
+        static PFNGLGENBUFFERSPROC glGenBuffersFunc = nullptr;
+        static PFNGLBINDBUFFERPROC glBindBufferFunc = nullptr;
+        static PFNGLBUFFERDATAPROC glBufferDataFunc = nullptr;
+        static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArrayFunc = nullptr;
+        static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointerFunc = nullptr;
+        static PFNGLUSEPROGRAMPROC glUseProgramFunc = nullptr;
+        static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocationFunc = nullptr;
+        static PFNGLUNIFORM1IPROC glUniform1iFunc = nullptr;
+        static PFNGLUNIFORM2FPROC glUniform2fFunc = nullptr;
+        static PFNGLUNIFORM4FPROC glUniform4fFunc = nullptr;
+        static PFNGLACTIVETEXTUREPROC glActiveTextureFunc = nullptr;
+
         if (!globalGlue)
         {
             globalGlue = cc_glglue_instance(glRenderAction->getCacheContext());
@@ -5840,13 +5854,13 @@ void InventorEx::section()
         {
             glGenFramebuffersFunc = (PFNGLGENFRAMEBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glGenFramebuffers");
         }
-        if (!glBindBufferARBFunc)
+        if (!glBindFramebufferFunc)
         {
-            glBindBufferARBFunc = (PFNGLBINDBUFFERARBPROC)cc_glglue_getprocaddress(globalGlue, "glBindBufferARB");
+            glBindFramebufferFunc = (PFNGLBINDFRAMEBUFFERPROC)cc_glglue_getprocaddress(globalGlue, "glBindFramebuffer");
         }
-        if (!glDeleteFramebuffersARBFunc)
+        if (!glDeleteFramebuffersFunc)
         {
-            glDeleteFramebuffersARBFunc = (PFNGLDELETEBUFFERSARBPROC)cc_glglue_getprocaddress(globalGlue, "glDeleteFramebuffersARB");
+            glDeleteFramebuffersFunc = (PFNGLDELETEFRAMEBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glDeleteFramebuffers");
         }
         if (!glBlitFramebufferFunc)
         {
@@ -5860,16 +5874,96 @@ void InventorEx::section()
         {
             glCheckFramebufferStatusFunc = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)cc_glglue_getprocaddress(globalGlue, "glCheckFramebufferStatus");
         }
+        if (!glCreateShaderFunc)
+        {
+            glCreateShaderFunc = (PFNGLCREATESHADERPROC)cc_glglue_getprocaddress(globalGlue, "glCreateShader");
+        }
+        if (!glCreateProgramFunc)
+        {
+            glCreateProgramFunc = (PFNGLCREATEPROGRAMPROC)cc_glglue_getprocaddress(globalGlue, "glCreateProgram");
+        }
+        if (!glShaderSourceFunc)
+        {
+            glShaderSourceFunc = (PFNGLSHADERSOURCEPROC)cc_glglue_getprocaddress(globalGlue, "glShaderSource");
+        }
+        if (!glCompileShaderFunc)
+        {
+            glCompileShaderFunc = (PFNGLCOMPILESHADERPROC)cc_glglue_getprocaddress(globalGlue, "glCompileShader");
+        }
+        if (!glAttachShaderFunc)
+        {
+            glAttachShaderFunc = (PFNGLATTACHSHADERPROC)cc_glglue_getprocaddress(globalGlue, "glAttachShader");
+        }
+        if (!glLinkProgramFunc)
+        {
+            glLinkProgramFunc = (PFNGLLINKPROGRAMPROC)cc_glglue_getprocaddress(globalGlue, "glLinkProgram");
+        }
+        if (!glDeleteShaderFunc)
+        {
+            glDeleteShaderFunc = (PFNGLDELETESHADERPROC)cc_glglue_getprocaddress(globalGlue, "glDeleteShader");
+        }
+        if (!glGenVertexArraysFunc)
+        {
+            glGenVertexArraysFunc = (PFNGLGENVERTEXARRAYSPROC)cc_glglue_getprocaddress(globalGlue, "glGenVertexArrays");
+        }
+        if (!glBindVertexArrayFunc)
+        {
+            glBindVertexArrayFunc = (PFNGLBINDVERTEXARRAYPROC)cc_glglue_getprocaddress(globalGlue, "glBindVertexArray");
+        }
+        if (!glGenBuffersFunc)
+        {
+            glGenBuffersFunc = (PFNGLGENBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glGenBuffers");
+        }
+        if (!glBindBufferFunc)
+        {
+            glBindBufferFunc = (PFNGLBINDBUFFERPROC)cc_glglue_getprocaddress(globalGlue, "glBindBuffer");
+        }
+        if (!glBufferDataFunc)
+        {
+            glBufferDataFunc = (PFNGLBUFFERDATAPROC)cc_glglue_getprocaddress(globalGlue, "glBufferData");
+        }
+        if (!glEnableVertexAttribArrayFunc)
+        {
+            glEnableVertexAttribArrayFunc = (PFNGLENABLEVERTEXATTRIBARRAYPROC)cc_glglue_getprocaddress(globalGlue, "glEnableVertexAttribArray");
+        }
+        if (!glVertexAttribPointerFunc)
+        {
+            glVertexAttribPointerFunc = (PFNGLVERTEXATTRIBPOINTERPROC)cc_glglue_getprocaddress(globalGlue, "glVertexAttribPointer");
+        }
+        if (!glUseProgramFunc)
+        {
+            glUseProgramFunc = (PFNGLUSEPROGRAMPROC)cc_glglue_getprocaddress(globalGlue, "glUseProgram");
+        }
+        if (!glGetUniformLocationFunc)
+        {
+            glGetUniformLocationFunc = (PFNGLGETUNIFORMLOCATIONPROC)cc_glglue_getprocaddress(globalGlue, "glGetUniformLocation");
+        }
+        if (!glUniform1iFunc)
+        {
+            glUniform1iFunc = (PFNGLUNIFORM1IPROC)cc_glglue_getprocaddress(globalGlue, "glUniform1i");
+        }
+        if (!glUniform2fFunc)
+        {
+            glUniform2fFunc = (PFNGLUNIFORM2FPROC)cc_glglue_getprocaddress(globalGlue, "glUniform2f");
+        }
+        if (!glUniform4fFunc)
+        {
+            glUniform4fFunc = (PFNGLUNIFORM4FPROC)cc_glglue_getprocaddress(globalGlue, "glUniform4f");
+        }
+        if (!glActiveTextureFunc)
+        {
+            glActiveTextureFunc = (PFNGLACTIVETEXTUREPROC)cc_glglue_getprocaddress(globalGlue, "glActiveTexture");
+        }
 
-        // 视情况存储当前viewport尺寸, 当窗口大小变化时, 可能要重新创建纹理
+        static GLuint s_myStencilFbo = 0;
+        static GLuint s_stencilTexId = 0;
         static int s_texWidth = 0;
         static int s_texHeight = 0;
-
-        // 仅当FBO或纹理未创建, 或size变化时, 重新创建
+        // 视情况存储当前viewport尺寸, 当窗口大小变化时, 可能要重新创建纹理
         if (s_myStencilFbo == 0 || width != s_texWidth || height != s_texHeight) {
-            // 如果已经有旧FBO, 清理
-            if (s_myStencilFbo) {
-                glDeleteFramebuffersARBFunc(1, &s_myStencilFbo);
+            if (s_myStencilFbo)
+            {
+                glDeleteFramebuffersFunc(1, &s_myStencilFbo);
                 glDeleteTextures(1, &s_stencilTexId);
                 s_myStencilFbo = 0;
                 s_stencilTexId = 0;
@@ -5903,7 +5997,7 @@ void InventorEx::section()
 
             // 创建FBO
             glGenFramebuffersFunc(1, &s_myStencilFbo);
-            glBindBufferARBFunc(GL_FRAMEBUFFER, s_myStencilFbo);
+            glBindFramebufferFunc(GL_FRAMEBUFFER, s_myStencilFbo);
 
             // 把s_stencilTexId 作为 stencil attachment
             glFramebufferTexture2DFunc(
@@ -5935,7 +6029,7 @@ void InventorEx::section()
                 SoDebugError::post("sectionLine", "FBO incomplete! Status=0x%x", fboStatus);
             }
 
-            glBindBufferARBFunc(GL_FRAMEBUFFER, 0);
+            glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
 
             s_texWidth = width;
             s_texHeight = height;
@@ -5944,11 +6038,13 @@ void InventorEx::section()
         // 2) 做 glBlitFramebuffer
         //    srcFbo: Coin3D绘制好的FBO, 如果你用QOpenGLWidget, 常常 srcFbo = this->defaultFramebufferObject(),
         //    这里直接用0(系统framebuffer)做演示(可能需要修改)
-        GLuint srcFbo = 0; // or glRenderAction->getCacheContextFBOID() if you can get it
+        GLint srcFbo = 0; // or glRenderAction->getCacheContextFBOID() if you can get it
+
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &srcFbo);
 
         // 绑定 read/draw
-        glBindBufferARBFunc(GL_READ_FRAMEBUFFER, srcFbo);
-        glBindBufferARBFunc(GL_DRAW_FRAMEBUFFER, s_myStencilFbo);
+        glBindFramebufferFunc(GL_READ_FRAMEBUFFER, srcFbo);
+        glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, s_myStencilFbo);
 
         // 把 stencil 复制到 s_myStencilFbo 的 stencil attachment
         glBlitFramebufferFunc(
@@ -5959,14 +6055,175 @@ void InventorEx::section()
         );
 
         // 解绑定
-        glBindBufferARBFunc(GL_FRAMEBUFFER, 0);
+        glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
 
         // 到这里, s_stencilTexId中已经有了最新的 stencil 数据(纯GPU),
         // 你可以在后续 pass 的着色器里, sampler2D uniform 绑定 s_stencilTexId, 
         // 然后做 "texture(stencilTex, uv)" 来访问 0/1/其它 stencil 值.
 
         // (剩下就看你如何做一个屏幕空间 pass 了)
-                             });
+
+        static GLuint s_prog = 0;
+        if (0 == s_prog)
+        {
+            const char* vsSrc = R"(
+                // Vertex Shader (screenquad_vs.glsl)
+                #version 330 core
+
+                layout (location = 0) in vec2 aPos; 
+                // aPos: full-screen triangle or quad coordinates in range [-1,1]
+
+                out vec2 vUV; // pass UV to fragment
+
+                void main()
+                {
+                    // 把 [-1,1] 的 xy 直接传给 gl_Position
+                    gl_Position = vec4(aPos, 0.0, 1.0);
+
+                    // 将 aPos 的范围从 [-1,1] 映射到 [0,1]，做一个简单UV
+                    // 例如 vUV = (aPos.xy * 0.5) + 0.5
+                    vUV = aPos * 0.5 + vec2(0.5, 0.5);
+                }
+            )";
+
+            const char* fsSrc = R"(
+                // Fragment Shader (screenquad_fs.glsl)
+                #version 330 core
+
+                in vec2 vUV; 
+                out vec4 FragColor;
+
+                uniform sampler2D uStencilTex;  
+                uniform vec2      uViewportSize; // (width, height)
+                uniform vec4      uLineColor;    // 剖面线颜色(含alpha)
+
+                // 这里我们只做简单4邻域判断(上下左右)
+                void main()
+                {
+                    // 当前像素的 stencil
+                    float center = texture(uStencilTex, vUV).r;
+                    // uv到像素坐标要乘 viewportSize
+                    // 但是如果只想用相对偏移，也可以： 1.0 / viewportSize.x
+                    float px = 1.0 / uViewportSize.x; 
+                    float py = 1.0 / uViewportSize.y;
+
+                    float left   = texture(uStencilTex, vUV + vec2(-px,    0.0)).r;
+                    float right  = texture(uStencilTex, vUV + vec2( px,    0.0)).r;
+                    float up     = texture(uStencilTex, vUV + vec2( 0.0,  py )).r;
+                    float down   = texture(uStencilTex, vUV + vec2( 0.0, -py )).r;
+
+                    float diff = 0.0;
+                    diff += abs(center - left);
+                    diff += abs(center - right);
+                    diff += abs(center - up);
+                    diff += abs(center - down);
+
+                    // 如果周边存在 0->1 或 1->0 的差异，就认为是轮廓
+                    if(diff > 0.001)
+                        FragColor = uLineColor;       // 画线色
+                    else
+                        FragColor = vec4(0,0,0,0);    // 透明
+                }
+            )";
+
+            // 1) Create & compile vertex shader
+            GLuint vs = glCreateShaderFunc(GL_VERTEX_SHADER);
+            glShaderSourceFunc(vs, 1, &vsSrc, NULL);
+            glCompileShaderFunc(vs);
+            // check compile errors ...
+
+            // 2) Create & compile fragment shader
+            GLuint fs = glCreateShaderFunc(GL_FRAGMENT_SHADER);
+            glShaderSourceFunc(fs, 1, &fsSrc, NULL);
+            glCompileShaderFunc(fs);
+            // check compile errors ...
+
+            // 3) Link program
+            s_prog = glCreateProgramFunc();
+            glAttachShaderFunc(s_prog, vs);
+            glAttachShaderFunc(s_prog, fs);
+            glLinkProgramFunc(s_prog);
+            // check link errors ...
+
+            // 4) Cleanup
+            glDeleteShaderFunc(vs);
+            glDeleteShaderFunc(fs);
+        }
+
+        static const GLfloat s_fullscreenQuad[6][2] = {
+            // A full screen quad (two triangles)
+            {-1.0f, -1.0f},
+            { 1.0f, -1.0f},
+            { 1.0f,  1.0f},
+
+            {-1.0f, -1.0f},
+            { 1.0f,  1.0f},
+            {-1.0f,  1.0f}
+        };
+        static GLuint vao = 0, vbo = 0;
+        if (!vao || !vbo)
+        {
+            glGenVertexArraysFunc(1, &vao);
+            glBindVertexArrayFunc(vao);
+
+            glGenBuffersFunc(1, &vbo);
+            glBindBufferFunc(GL_ARRAY_BUFFER, vbo);
+            glBufferDataFunc(GL_ARRAY_BUFFER, sizeof(s_fullscreenQuad), s_fullscreenQuad, GL_STATIC_DRAW);
+
+            // 绑定到 location=0
+            glEnableVertexAttribArrayFunc(0);
+            glVertexAttribPointerFunc(
+                0,           // index=0
+                2,           // 2D coords
+                GL_FLOAT,
+                GL_FALSE,
+                sizeof(float) * 2,
+                (void*)0
+            );
+
+            // 解绑
+            glBindBufferFunc(GL_ARRAY_BUFFER, 0);
+            glBindVertexArrayFunc(0);
+        }
+
+        /*!
+        * \brief 在 stencil 拷贝完成后，做屏幕空间 pass，渲染剖面线
+        */
+        // 3) 配置 OpenGL 状态, 让剖面线叠加到画面上
+        glViewport(0, 0, width, height);
+        glDisable(GL_DEPTH_TEST);   // 不跟场景深度竞争, 直接画在最前
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // 4) 使用着色器
+        glUseProgramFunc(s_prog);
+
+        // 传送 uniform
+        GLint locTex = glGetUniformLocationFunc(s_prog, "uStencilTex");
+        glUniform1iFunc(locTex, 0); // 绑定到 texture unit 0
+        // 视口大小
+        GLint locSize = glGetUniformLocationFunc(s_prog, "uViewportSize");
+        glUniform2fFunc(locSize, (float)width, (float)height);
+        // 颜色
+        GLint locCol = glGetUniformLocationFunc(s_prog, "uLineColor");
+        // 例如红色线
+        glUniform4fFunc(locCol, 1.0f, 0.0f, 0.0f, 1.0f);
+
+        // 5) 绑定刚才我们复制好的 stencilTex
+        glActiveTextureFunc(GL_TEXTURE0 + 0);
+        glBindTexture(GL_TEXTURE_2D, s_stencilTexId);
+
+        // 6) 绘制全屏三角形 / 四边形
+        glBindVertexArrayFunc(vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArrayFunc(0);
+
+        // 解绑
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glUseProgramFunc(0);
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+                             }, &m_viewer);
     m_root->addChild(sectionLine);
 
 };
