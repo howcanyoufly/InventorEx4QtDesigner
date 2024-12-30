@@ -5801,23 +5801,24 @@ void InventorEx::section()
             glPopAttrib();
         }
                          });
-    //m_root->addChild(faceSet);
+    m_root->addChild(faceSet);
 
     /*!
-     * \brief Callback for copying stencil from default FBO to a texture via glBlitFramebuffer
-     */
+    * \brief Callback for section line rendering with "B" approach
+    *        1) Create colorFbo (with colorTex + dsRbo)
+    *        2) Blit stencil from oldFbo
+    *        3) In colorFbo, use stencil test => draw white(1.0) to stencil=1 area
+    *        4) Final pass: read s_colorTex => do screen-space render
+    */
     SoCallback* sectionLine = new SoCallback();
     sectionLine->setCallback([](void* userData, SoAction* action) {
-        if (!action->isOfType(SoGLRenderAction::getClassTypeId())) {
+        if (!action->isOfType(SoGLRenderAction::getClassTypeId()))
             return;
-        }
 
-        SoGLRenderAction* glRenderAction = static_cast<SoGLRenderAction*>(action);
-        const SbViewportRegion& vp = glRenderAction->getViewportRegion();
-        SbVec2s size = vp.getViewportSizePixels();
-        int width = size[0];
-        int height = size[1];
-
+        SoGLRenderAction* glRenderAction = (SoGLRenderAction*)action;
+        //---------------------------------------
+        // 1) Load extension function pointers
+        //---------------------------------------
         static const cc_glglue* globalGlue = nullptr;
         static PFNGLGENFRAMEBUFFERSPROC glGenFramebuffersFunc = nullptr;
         static PFNGLBINDFRAMEBUFFERPROC glBindFramebufferFunc = nullptr;
@@ -5845,6 +5846,12 @@ void InventorEx::section()
         static PFNGLUNIFORM2FPROC glUniform2fFunc = nullptr;
         static PFNGLUNIFORM4FPROC glUniform4fFunc = nullptr;
         static PFNGLACTIVETEXTUREPROC glActiveTextureFunc = nullptr;
+        static PFNGLGENRENDERBUFFERSPROC glGenRenderbuffersFunc = nullptr;
+        static PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffersFunc = nullptr;
+        static PFNGLBINDRENDERBUFFERPROC glBindRenderbufferFunc = nullptr;
+        static PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorageFunc = nullptr;
+        static PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbufferFunc = nullptr;
+        static PFNGLDRAWBUFFERSPROC glDrawBuffersFunc = nullptr;
 
         if (!globalGlue)
         {
@@ -5954,160 +5961,119 @@ void InventorEx::section()
         {
             glActiveTextureFunc = (PFNGLACTIVETEXTUREPROC)cc_glglue_getprocaddress(globalGlue, "glActiveTexture");
         }
-
-        static GLuint s_myStencilFbo = 0;
-        static GLuint s_stencilTexId = 0;
-        static int s_texWidth = 0;
-        static int s_texHeight = 0;
-        // 视情况存储当前viewport尺寸, 当窗口大小变化时, 可能要重新创建纹理
-        if (s_myStencilFbo == 0 || width != s_texWidth || height != s_texHeight) {
-            if (s_myStencilFbo)
-            {
-                glDeleteFramebuffersFunc(1, &s_myStencilFbo);
-                glDeleteTextures(1, &s_stencilTexId);
-                s_myStencilFbo = 0;
-                s_stencilTexId = 0;
-            }
-
-            std::string ext = (const char*)(glGetString(GL_EXTENSIONS));
-            if (std::string::npos == ext.find("GL_ARB_stencil_texturing"))
-            {
-                SoDebugError::post("sectionLine", "GL_ARB_stencil_texturing not supported!");
-                return;
-            }
-
-            // 创建 stencil 纹理
-            glGenTextures(1, &s_stencilTexId);
-            glBindTexture(GL_TEXTURE_2D, s_stencilTexId);
-
-            // 基础过滤
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-            glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_STENCIL_INDEX);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_ALWAYS);
-
-
-            // 分配纹理存储: 这里仅使用 stencil, 即 GL_STENCIL_INDEX8
-            //  如果驱动对纯stencil纹理支持有问题, 可以改用 GL_DEPTH24_STENCIL8
-            //  并绑定到 GL_DEPTH_STENCIL_ATTACHMENT
-            //glTexImage2D(
-            //    GL_TEXTURE_2D,
-            //    0,
-            //    GL_STENCIL_INDEX8,  // internal format
-            //    width, height,
-            //    0,
-            //    GL_STENCIL_INDEX,   // external format
-            //    GL_UNSIGNED_BYTE,
-            //    nullptr             // no data upload
-            //);
-            glTexImage2D(
-                GL_TEXTURE_2D,
-                0,
-                GL_DEPTH24_STENCIL8,
-                width, height,
-                0,
-                GL_DEPTH_STENCIL,
-                GL_UNSIGNED_INT_24_8,
-                nullptr
-            );
-
-
-            glBindTexture(GL_TEXTURE_2D, 0);
-
-            // 创建FBO
-            glGenFramebuffersFunc(1, &s_myStencilFbo);
-            glBindFramebufferFunc(GL_FRAMEBUFFER, s_myStencilFbo);
-
-            // 把s_stencilTexId 作为 stencil attachment
-            glFramebufferTexture2DFunc(
-                GL_FRAMEBUFFER,
-                GL_STENCIL_ATTACHMENT,
-                GL_TEXTURE_2D,
-                s_stencilTexId,
-                0
-            );
-
-            // 若需要 color attachment, 可加一个 dummy color tex
-            // 这里示例中仅使用 stencil, 要让FBO有完整状态, 最好也加一个color att
-            // 否则某些驱动会报 FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT
-            GLuint colorDummy = 0;
-            glGenTextures(1, &colorDummy);
-            glBindTexture(GL_TEXTURE_2D, colorDummy);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
-                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-            glFramebufferTexture2DFunc(GL_FRAMEBUFFER,
-                                       GL_COLOR_ATTACHMENT0,
-                                       GL_TEXTURE_2D,
-                                       colorDummy,
-                                       0);
-            glBindTexture(GL_TEXTURE_2D, 0);
-
-            // 检查完整性
-            GLenum fboStatus = glCheckFramebufferStatusFunc(GL_FRAMEBUFFER);
-            if (fboStatus != GL_FRAMEBUFFER_COMPLETE) {
-                SoDebugError::post("sectionLine", "FBO incomplete! Status=0x%x", fboStatus);
-            }
-
-            glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
-
-            s_texWidth = width;
-            s_texHeight = height;
+        if (!glGenRenderbuffersFunc)
+        {
+            glGenRenderbuffersFunc = (PFNGLGENRENDERBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glGenRenderbuffers");
+        }
+        if (!glDeleteRenderbuffersFunc)
+        {
+            glDeleteRenderbuffersFunc = (PFNGLDELETERENDERBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glDeleteRenderbuffers");
+        }
+        if (!glBindRenderbufferFunc)
+        {
+            glBindRenderbufferFunc = (PFNGLBINDRENDERBUFFERPROC)cc_glglue_getprocaddress(globalGlue, "glBindRenderbuffer");
+        }
+        if (!glRenderbufferStorageFunc)
+        {
+            glRenderbufferStorageFunc = (PFNGLRENDERBUFFERSTORAGEPROC)cc_glglue_getprocaddress(globalGlue, "glRenderbufferStorage");
+        }
+        if (!glFramebufferRenderbufferFunc)
+        {
+            glFramebufferRenderbufferFunc = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)cc_glglue_getprocaddress(globalGlue, "glFramebufferRenderbuffer");
+        }
+        if (!glDrawBuffersFunc)
+        {
+            glDrawBuffersFunc = (PFNGLDRAWBUFFERSPROC)cc_glglue_getprocaddress(globalGlue, "glDrawBuffers");
         }
 
-        // 1) 创建 FBO + Color Texture (而不绑定 stencil)
+        // 获取窗口尺寸
+        const SbViewportRegion& vp = glRenderAction->getViewportRegion();
+        int width = vp.getViewportSizePixels()[0];
+        int height = vp.getViewportSizePixels()[1];
+
+        //---------------------------------------
+        // 2) 创建/更新 colorFbo (带 colorTex + dsRbo)
+        //---------------------------------------
         static GLuint s_colorFbo = 0;
         static GLuint s_colorTex = 0;
+        static GLuint s_dsRbo = 0;
+        static int s_texWidth = 0, s_texHeight = 0;
 
-        if (s_colorFbo == 0) {
+        if (s_colorFbo == 0 || width != s_texWidth || height != s_texHeight)
+        {
+            // 如果存在旧资源, 先清理
+            if (s_colorFbo) {
+                glDeleteFramebuffersFunc(1, &s_colorFbo);
+                glDeleteTextures(1, &s_colorTex);
+                if (s_dsRbo) {
+                    glDeleteRenderbuffersFunc(1, &s_dsRbo);
+                    s_dsRbo = 0;
+                }
+                s_colorFbo = 0;
+                s_colorTex = 0;
+            }
+
+            // (A) 创建 colorTex
             glGenTextures(1, &s_colorTex);
             glBindTexture(GL_TEXTURE_2D, s_colorTex);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-            glTexImage2D(
-                GL_TEXTURE_2D,
-                0,
-                GL_RGBA8,  // internal format
-                width, height,
-                0,
-                GL_RGBA,  // external format
-                GL_UNSIGNED_BYTE,
-                nullptr
-            );
+            // 分配 RGBA8
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glBindTexture(GL_TEXTURE_2D, 0);
 
+            // (B) 创建FBO
             glGenFramebuffersFunc(1, &s_colorFbo);
             glBindFramebufferFunc(GL_FRAMEBUFFER, s_colorFbo);
-            glFramebufferTexture2DFunc(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                                       GL_TEXTURE_2D, s_colorTex, 0);
 
-            GLenum fboStatus = glCheckFramebufferStatusFunc(GL_FRAMEBUFFER);
-            if (fboStatus != GL_FRAMEBUFFER_COMPLETE) {
-                SoDebugError::post("testColorTex", "FBO incomplete! status=0x%x", fboStatus);
+            // attach colorTex => color attachment0
+            glFramebufferTexture2DFunc(GL_FRAMEBUFFER,
+                                       GL_COLOR_ATTACHMENT0,
+                                       GL_TEXTURE_2D,
+                                       s_colorTex,
+                                       0);
+
+            // (C) 创建深度+模板的 renderbuffer
+            glGenRenderbuffersFunc(1, &s_dsRbo);
+            glBindRenderbufferFunc(GL_RENDERBUFFER, s_dsRbo);
+            glRenderbufferStorageFunc(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+            glFramebufferRenderbufferFunc(GL_FRAMEBUFFER,
+                                          GL_DEPTH_STENCIL_ATTACHMENT,
+                                          GL_RENDERBUFFER,
+                                          s_dsRbo);
+            glBindRenderbufferFunc(GL_RENDERBUFFER, 0);
+
+            // 检查完整性
+            GLenum stat = glCheckFramebufferStatusFunc(GL_FRAMEBUFFER);
+            if (stat != GL_FRAMEBUFFER_COMPLETE) {
+                SoDebugError::post("sectionLine",
+                                   "colorFbo incomplete! status=0x%x", stat);
             }
             glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
+
+            // 记录宽高
+            s_texWidth = width;
+            s_texHeight = height;
         }
-        // 2) 做 glBlitFramebuffer
-        //    srcFbo: Coin3D绘制好的FBO, 如果你用QOpenGLWidget, 常常 srcFbo = this->defaultFramebufferObject(),
-        //    这里直接用0(系统framebuffer)做演示(可能需要修改)
-        GLint srcFbo = 0; // or glRenderAction->getCacheContextFBOID() if you can get it
 
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &srcFbo);
+        //---------------------------------------
+        // 3) Blit stencil from "旧FBO" => s_colorFbo
+        //---------------------------------------
+        GLint oldFbo = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldFbo);
+        // 这里 oldFbo 可能是0(系统FBO) 或 QOpenGLWidget->defaultFramebufferObject()
 
-        // 绑定 read/draw
-        glBindFramebufferFunc(GL_READ_FRAMEBUFFER, srcFbo);
-        glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, s_myStencilFbo);
+        // (A) bind read/draw
+        glBindFramebufferFunc(GL_READ_FRAMEBUFFER, oldFbo);
+        glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, s_colorFbo);
 
-        // 把 stencil 复制到 s_myStencilFbo 的 stencil attachment
+        // (B) 复制 stencil
         glBlitFramebufferFunc(
-            0, 0, width, height,  // src rect
-            0, 0, width, height,  // dst rect
+            0, 0, width, height,
+            0, 0, width, height,
             GL_STENCIL_BUFFER_BIT,
             GL_NEAREST
         );
@@ -6115,164 +6081,179 @@ void InventorEx::section()
         // 解绑定
         glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
 
-        // 2) 把默认FBO的 Color 拷贝过来
-        //   srcFbo: 0 or QOpenGLWidget->defaultFramebufferObject()
-        //   dstFbo: s_colorFbo
-        glBindFramebufferFunc(GL_READ_FRAMEBUFFER, srcFbo);
-        glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, s_colorFbo);
+        //---------------------------------------
+        // 4) 在 s_colorFbo 里启用 stencil=1 => 画全屏白色
+        //---------------------------------------
+        glBindFramebufferFunc(GL_FRAMEBUFFER, s_colorFbo);
+        GLenum stat = glCheckFramebufferStatusFunc(GL_FRAMEBUFFER);
+        if (GL_FRAMEBUFFER_COMPLETE != stat)
+        {
+            SoDebugError::post("sectionLine",
+                               "colorFbo bind incorrect! status=0x%x", stat);
+        }
 
-        glBlitFramebufferFunc(
-            0, 0, width, height,
-            0, 0, width, height,
-            GL_COLOR_BUFFER_BIT,
-            GL_NEAREST
-        );
+        GLint curFbo = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &curFbo);
+        if (curFbo != s_colorFbo)
+        {
+            SoDebugError::post("myCallback", "curFbo = %d", curFbo);
+        }
+        glViewport(0, 0, width, height);
 
+        // 清空 color => (0,0,0,0)
+        glClearColor(0, 0, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // 启用 stencil test
+        glStencilFunc(GL_EQUAL, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+        glDisable(GL_DEPTH_TEST); // 不做深度
+
+        glDisable(GL_LIGHTING);
+
+        // 用固定管线方式画满屏
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadIdentity();
+        glOrtho(-1, 1, -1, 1, -1, 1);
+
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        // 写成白色
+        glColor3f(1, 1, 1);
+        glBegin(GL_QUADS);
+        glVertex2f(-1, -1);
+        glVertex2f(1, -1);
+        glVertex2f(1, 1);
+        glVertex2f(-1, 1);
+        glEnd();
+
+        // restore matrix
+        glPopMatrix();
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+
+        // 还原状态
+        glStencilFunc(GL_ALWAYS, 0, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_LIGHTING);
         glBindFramebufferFunc(GL_FRAMEBUFFER, 0);
 
+        // 此时 s_colorTex 内部就是：stencil=1 => (1,1,1,1)，其余 => (0,0,0,0)
 
-        // 到这里, s_stencilTexId中已经有了最新的 stencil 数据(纯GPU),
-        // 你可以在后续 pass 的着色器里, sampler2D uniform 绑定 s_stencilTexId, 
-        // 然后做 "texture(stencilTex, uv)" 来访问 0/1/其它 stencil 值.
-
-        // (剩下就看你如何做一个屏幕空间 pass 了)
-
+        //---------------------------------------
+        // 5) 最后一段 pass: 在屏幕上展示 s_colorTex 
+        //    (或做其他后处理，比如Canny/边缘检测等)
+        //---------------------------------------
+        // 这里我们就演示: "把 s_colorTex 当做灰度贴图显示"
+        // 下方写了一个非常简单的 Shader (s_prog)
         static GLuint s_prog = 0;
-        if (0 == s_prog)
-        {
-            const char* vsSrc = R"(
-                // Vertex Shader (screenquad_vs.glsl)
+        if (s_prog == 0) {
+            // compile & link
+            const char* vsCode = R"(
+                #version 330 core
+                layout(location=0) in vec2 aPos;
+                out vec2 vUV;
+                void main(){
+                    gl_Position=vec4(aPos,0,1);
+                    vUV = (aPos * 0.5) + vec2(0.5,0.5);
+                }
+            )";
+            const char* fsCode = R"(
                 #version 330 core
 
-                layout (location = 0) in vec2 aPos; 
-                // aPos: full-screen triangle or quad coordinates in range [-1,1]
+                in vec2 vUV;           // 来自顶点着色器的纹理坐标
+                out vec4 FragColor;    // 输出像素颜色
 
-                out vec2 vUV; // pass UV to fragment
+                uniform sampler2D uMaskTex;    // 0/1 mask 纹理
+                uniform vec2 uViewportSize;    // (width, height)
+                uniform vec4 uLineColor;       // 剖面线颜色，比如(1,0,0,1)
 
                 void main()
                 {
-                    // 把 [-1,1] 的 xy 直接传给 gl_Position
-                    gl_Position = vec4(aPos, 0.0, 1.0);
+                    // center
+                    float center = texture(uMaskTex, vUV).r;
 
-                    // 将 aPos 的范围从 [-1,1] 映射到 [0,1]，做一个简单UV
-                    // 例如 vUV = (aPos.xy * 0.5) + 0.5
-                    vUV = aPos * 0.5 + vec2(0.5, 0.5);
+                    float px = 1.0 / uViewportSize.x;
+                    float py = 1.0 / uViewportSize.y;
+
+                    // neighbor
+                    float leftVal   = texture(uMaskTex, vUV + vec2(-px, 0.0)).r;
+                    float rightVal  = texture(uMaskTex, vUV + vec2( px, 0.0)).r;
+                    float upVal     = texture(uMaskTex, vUV + vec2(0.0,  py)).r;
+                    float downVal   = texture(uMaskTex, vUV + vec2(0.0, -py)).r;
+
+                    // 简单判断：只要某个邻域和 center 不同 => 边缘
+                    float diff = 0.0;
+                    diff += abs(center - leftVal);
+                    diff += abs(center - rightVal);
+                    diff += abs(center - upVal);
+                    diff += abs(center - downVal);
+
+                    if(diff > 0.001)
+                    {
+                        // 边缘像素 => 画线颜色
+                        FragColor = uLineColor;
+                    }
+                    else
+                    {
+                        // 非边缘 => 透明
+                        FragColor = vec4(0,0,0,0);
+                    }
                 }
             )";
-
-            const char* fsSrc = R"(
-                // Fragment Shader (screenquad_fs.glsl)
-                #version 330 core
-
-                in vec2 vUV; 
-                out vec4 FragColor;
-
-                uniform sampler2D uStencilTex;  
-                uniform vec2      uViewportSize; // (width, height)
-                uniform vec4      uLineColor;    // 剖面线颜色(含alpha)
-
-                // 这里我们只做简单4邻域判断(上下左右)
-                void main()
-                {
-                    //// 当前像素的 stencil
-                    //float center = texture(uStencilTex, vUV).r;
-                    //// uv到像素坐标要乘 viewportSize
-                    //// 但是如果只想用相对偏移，也可以： 1.0 / viewportSize.x
-                    //float px = 1.0 / uViewportSize.x; 
-                    //float py = 1.0 / uViewportSize.y;
-
-                    //float left   = texture(uStencilTex, vUV + vec2(-px,    0.0)).r;
-                    //float right  = texture(uStencilTex, vUV + vec2( px,    0.0)).r;
-                    //float up     = texture(uStencilTex, vUV + vec2( 0.0,  py )).r;
-                    //float down   = texture(uStencilTex, vUV + vec2( 0.0, -py )).r;
-
-                    //float diff = 0.0;
-                    //diff += abs(center - left);
-                    //diff += abs(center - right);
-                    //diff += abs(center - up);
-                    //diff += abs(center - down);
-
-                    //// 如果周边存在 0->1 或 1->0 的差异，就认为是轮廓
-                    //if(diff > 0.001)
-                    //    FragColor = uLineColor;       // 画线色
-                    //else
-                    //    FragColor = vec4(0,0,0,0);    // 透明
-
-                    float val = texture(uStencilTex, vUV).r; 
-                    FragColor = vec4(val, val, val, 1.0); // 直接把采样的值映射成灰度
-                }
-            )";
-
-            // 1) Create & compile vertex shader
+            // shader compile ...
             GLuint vs = glCreateShaderFunc(GL_VERTEX_SHADER);
-            glShaderSourceFunc(vs, 1, &vsSrc, NULL);
+            glShaderSourceFunc(vs, 1, &vsCode, nullptr);
             glCompileShaderFunc(vs);
-            // check compile errors ...
-
-            // 2) Create & compile fragment shader
+            // check compile ...
             GLuint fs = glCreateShaderFunc(GL_FRAGMENT_SHADER);
-            glShaderSourceFunc(fs, 1, &fsSrc, NULL);
+            glShaderSourceFunc(fs, 1, &fsCode, nullptr);
             glCompileShaderFunc(fs);
-            // check compile errors ...
-
-            // 3) Link program
+            // link
             s_prog = glCreateProgramFunc();
             glAttachShaderFunc(s_prog, vs);
             glAttachShaderFunc(s_prog, fs);
             glLinkProgramFunc(s_prog);
-            // check link errors ...
-
-            // 4) Cleanup
+            // check link ...
             glDeleteShaderFunc(vs);
             glDeleteShaderFunc(fs);
         }
 
-        static const GLfloat s_fullscreenQuad[6][2] = {
-            // A full screen quad (two triangles)
-            {-1.0f, -1.0f},
-            { 1.0f, -1.0f},
-            { 1.0f,  1.0f},
+        // 全屏三角形 VAO
+        static GLuint s_vao = 0, s_vbo = 0;
+        if (!s_vao) {
+            glGenVertexArraysFunc(1, &s_vao);
+            glBindVertexArrayFunc(s_vao);
 
-            {-1.0f, -1.0f},
-            { 1.0f,  1.0f},
-            {-1.0f,  1.0f}
-        };
-        static GLuint vao = 0, vbo = 0;
-        if (!vao || !vbo)
-        {
-            glGenVertexArraysFunc(1, &vao);
-            glBindVertexArrayFunc(vao);
+            static float fsQuad[6 * 2] = {
+                -1,-1,  1,-1,  1,1,
+                -1,-1,  1,1,   -1,1
+            };
+            glGenBuffersFunc(1, &s_vbo);
+            glBindBufferFunc(GL_ARRAY_BUFFER, s_vbo);
+            glBufferDataFunc(GL_ARRAY_BUFFER, sizeof(fsQuad), fsQuad, GL_STATIC_DRAW);
 
-            glGenBuffersFunc(1, &vbo);
-            glBindBufferFunc(GL_ARRAY_BUFFER, vbo);
-            glBufferDataFunc(GL_ARRAY_BUFFER, sizeof(s_fullscreenQuad), s_fullscreenQuad, GL_STATIC_DRAW);
-
-            // 绑定到 location=0
             glEnableVertexAttribArrayFunc(0);
-            glVertexAttribPointerFunc(
-                0,           // index=0
-                2,           // 2D coords
-                GL_FLOAT,
-                GL_FALSE,
-                sizeof(float) * 2,
-                (void*)0
-            );
+            glVertexAttribPointerFunc(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
 
-            // 解绑
             glBindBufferFunc(GL_ARRAY_BUFFER, 0);
             glBindVertexArrayFunc(0);
         }
 
-        /*!
-        * \brief 在 stencil 拷贝完成后，做屏幕空间 pass，渲染剖面线
-        */
-        // 3) 配置 OpenGL 状态, 让剖面线叠加到画面上
+        // 绑定默认FBO 或 Coin3D FBO 做最终显示
+        glBindFramebufferFunc(GL_FRAMEBUFFER, oldFbo);
         glViewport(0, 0, width, height);
-        glDisable(GL_DEPTH_TEST);   // 不跟场景深度竞争, 直接画在最前
+        glDisable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        // 4) 使用着色器
+        // 启动 s_prog
         glUseProgramFunc(s_prog);
 
         // 传送 uniform
@@ -6284,25 +6265,25 @@ void InventorEx::section()
         // 颜色
         GLint locCol = glGetUniformLocationFunc(s_prog, "uLineColor");
         // 例如红色线
-        glUniform4fFunc(locCol, 1.0f, 0.0f, 0.0f, 1.0f);
+        glUniform4fFunc(locCol, 0.0f, 1.0f, 0.0f, 1.0f);
 
-        // 5) 绑定刚才我们复制好的 stencilTex
-        glActiveTextureFunc(GL_TEXTURE0 + 0);
-        glBindTexture(GL_TEXTURE_2D, s_stencilTexId/*s_colorTex*/);
+        // 绑定 s_colorTex
+        glActiveTextureFunc(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, s_colorTex);
 
-        // 6) 绘制全屏三角形 / 四边形
-        glBindVertexArrayFunc(vao);
+        // 画全屏
+        glBindVertexArrayFunc(s_vao);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArrayFunc(0);
 
-        // 解绑
+        // 还原
         glBindTexture(GL_TEXTURE_2D, 0);
         glUseProgramFunc(0);
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
-                             }, &m_viewer);
-    m_root->addChild(sectionLine);
 
+                             }, m_viewer);
+    m_root->addChild(sectionLine);
 };
 
 void InventorEx::getWorldToScreenScale()
