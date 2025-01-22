@@ -114,6 +114,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"lights", std::bind(&InventorEx::lights, this)},
         {"referenceCount", std::bind(&InventorEx::referenceCount, this)},
         {"indexedFaceSet", std::bind(&InventorEx::indexedFaceSet, this)},
+        {"indexedLineSet", std::bind(&InventorEx::indexedLineSet, this)},
         {"twoCube", std::bind(&InventorEx::twoCube, this)},
         {"pickAction", std::bind(&InventorEx::pickAction, this)},
         {"glCallback", std::bind(&InventorEx::glCallback, this)},
@@ -768,6 +769,92 @@ void InventorEx::indexedFaceSet()
     myFaceSet->coordIndex.setValues(0, 72, indices);
     m_root->addChild(myFaceSet);
 #endif
+}
+
+void InventorEx::indexedLineSet()
+{
+    SoSeparator* sceneRoot = new SoSeparator;
+
+    float cubeVertices[8][3] = {
+        {0,0,0}, // v0
+        {1,0,0}, // v1
+        {1,1,0}, // v2
+        {0,1,0}, // v3
+        {0,0,1}, // v4
+        {1,0,1}, // v5
+        {1,1,1}, // v6
+        {0,1,1}  // v7
+    };
+
+    SoCoordinate3* coords = new SoCoordinate3;
+    coords->point.setValues(0, 8, cubeVertices);
+    sceneRoot->addChild(coords);
+
+    int32_t cubeEdges[24] = {
+        0, 1, 2, 3, 0, SO_END_LINE_INDEX,
+        4, 5, 6, 7, 4, SO_END_LINE_INDEX,
+        0, 4, SO_END_LINE_INDEX,
+        1, 5, SO_END_LINE_INDEX,
+        2, 6, SO_END_LINE_INDEX,
+        3, 7, SO_END_LINE_INDEX
+    };
+
+    float edgeColors[6][3] = {
+        {1,0,0},   // red
+        {0,1,0},   // green
+        {0,0,1},   // blue
+        {1,1,0},   // yellow
+        {1,0,1},   // magenta
+        {0,1,1}   // cyan
+    };
+
+    // 建立 SoMaterial
+    SoMaterial* material = new SoMaterial;
+    material->diffuseColor.setValues(0, 6, edgeColors);
+    sceneRoot->addChild(material);
+
+    //---------------------------------
+    // 4. 绑定方式: PER_FACE_INDEXED
+    //---------------------------------
+    // 对 IndexedLineSet 而言, PER_FACE / PER_PART 都表示
+    // "按线段(从-1到-1) 绑定材质"
+    // 这里只是名字不同
+    SoMaterialBinding* matBinding = new SoMaterialBinding;
+    matBinding->value = SoMaterialBinding::PER_FACE_INDEXED;
+    // 若你想尝试 PER_PART_INDEXED, 就换成:
+    //matBinding->value = SoMaterialBinding::PER_PART_INDEXED;
+    sceneRoot->addChild(matBinding);
+
+    //---------------------------------
+    // 5. 建立 SoIndexedLineSet
+    //---------------------------------
+    SoIndexedLineSet* ils = new SoIndexedLineSet;
+    // 顶点索引
+    ils->coordIndex.setValues(0, 24, cubeEdges);
+
+    // 决定材质索引 (每条边一个)
+    // 所以一共12条线, 我们就写12个: 0..11
+    int32_t matIndex[6];
+    for (int i = 0; i < 6; i++) {
+        matIndex[i] = i; // edge i用 colors[i]
+    }
+    ils->materialIndex.setValues(0, 6, matIndex);
+
+    sceneRoot->addChild(ils);
+
+    sceneRoot->ref();
+    SoReorganizeAction reorganizeAct;
+    reorganizeAct.apply(sceneRoot);
+
+    SoWriteAction writeAct;
+    writeAct.getOutput()->openFile("C:/Users/Admin/Documents/WorkingSpace/indexedLineSet.iv");
+    writeAct.getOutput()->setBinary(FALSE);
+    writeAct.apply(sceneRoot);
+    writeAct.getOutput()->closeFile();
+    sceneRoot->unrefNoDelete();
+
+    // 把sceneRoot加进你主场景
+    m_root->addChild(sceneRoot);
 }
 
 /*
@@ -4097,7 +4184,7 @@ SoSwitch* InventorEx::assembleBodySceneShader(const ShapeData& data)
         CREATE_NODE(SoPolygonOffset, polygonOffset)
         CREATE_NODE(SoSeparator, faceRoot)
         CREATE_NODE(SoMaterial, faceMaterial)
-        CREATE_NODE(SoIndexedFaceSet, faceSet)
+        //CREATE_NODE(SoIndexedFaceSet, faceSet)
         CREATE_NODE(SoSeparator, lineRoot)
         CREATE_NODE(SoIndexedLineSet, lineSet)
 
@@ -4115,7 +4202,7 @@ SoSwitch* InventorEx::assembleBodySceneShader(const ShapeData& data)
         {shadeWithEdge, faceRoot},
         {shadeWithEdge, lineRoot},
         {faceRoot, faceMaterial},
-        {faceRoot, faceSet},
+        //{faceRoot, faceSet},
         {lineRoot, lineSet},
     };
     for (const auto& relationship : relationships)
@@ -4128,7 +4215,7 @@ SoSwitch* InventorEx::assembleBodySceneShader(const ShapeData& data)
     renderModeSwitch->whichChild = 0;
 
     coords->point.setValues(0, data.points.size(), reinterpret_cast<const float(*)[3]>(data.points.data()));
-    faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
+    //faceSet->coordIndex.setValues(0, data.faceIndices.size(), data.faceIndices.data());
     lineSet->coordIndex.setValues(0, data.lineIndices.size(), data.lineIndices.data());
 
     return bodySwitch;
@@ -4176,6 +4263,7 @@ void InventorEx::performance()
         SoReorganizeAction action;
         action.apply(m_root);
     }
+    bodies->renderCaching = SoSeparator::ON;
     //m_root->renderCaching = SoSeparator::OFF;
 }
 
@@ -5641,6 +5729,18 @@ GLuint texId = 0;
 void InventorEx::section()
 {
     SoSeparator* ring = createRing();
+    //SoSeparator* ring = new SoSeparator;
+
+    //SoTranslation* ori = new SoTranslation;
+    //ori->translation.setValue(-1.5f, -1.5f, -1.5f);
+
+    //SoCube* cube = new SoCube;
+    //cube->width = 3.0f;
+    //cube->height = 3.0f;
+    //cube->depth = 3.0f;
+
+    //ring->addChild(ori);
+    //ring->addChild(cube);
 
     SoClipPlane* clipPlane = new SoClipPlane;
     clipPlane->plane.setValue(SbPlane(SbVec3f(0, 1, 0), -0.8));
@@ -6284,6 +6384,9 @@ void InventorEx::section()
 
                              }, m_viewer);
     m_root->addChild(sectionLine);
+
+    //m_viewer->getSoRenderManager()->getGLRenderAction()->setNumPasses(4);
+    //m_viewer->getSoRenderManager()->getGLRenderAction()->setSmoothing(TRUE);
 };
 
 void InventorEx::getWorldToScreenScale()

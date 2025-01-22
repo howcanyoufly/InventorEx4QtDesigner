@@ -54,7 +54,7 @@ private:
     void lights();
     void referenceCount();
     void indexedFaceSet();
-
+    void indexedLineSet();
     // hiddenline discovery
     void cubeFront(SoSeparator* root);
     void cubeBehind(SoSeparator* root);
