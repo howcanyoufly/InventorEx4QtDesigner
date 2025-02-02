@@ -44,9 +44,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="InventorEx.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="SoGradientBackground.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -74,5 +71,10 @@
     <ClInclude Include="SoZoomAdaptor.h">
       <Filter>头文件</Filter>
     </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="InventorEx.h">
+      <Filter>头文件</Filter>
+    </QtMoc>
   </ItemGroup>
 </Project>

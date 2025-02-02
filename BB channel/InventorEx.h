@@ -19,6 +19,8 @@
 #include <QtWidgets/QMainWindow>
 
 #include <NavigationWidget.h>
+#include "QObject"
+#include "QRunnable"
 
 using namespace SIM::Coin3D::Quarter;
 
@@ -166,7 +168,7 @@ private:
     void loadErrorHandle();
     void loadGLCallback();
     void loadBackground();
-
+    void loadPickAndWrite2();
 
     std::map<std::string, std::function<void(void)>> m_functions;
     std::set<std::string> m_delayedLoadNames;
@@ -187,3 +189,52 @@ private:
     bool m_reset;// function does but plugin does not
     std::vector<ShapeData> m_randomCuboids;
 };
+
+struct PickRequest
+{
+    SoNode* root;
+    SbViewportRegion viewport;
+    SbVec2s cursorPosition;
+    int requestId; // 若要区分不同请求，使用自增ID或时间戳
+};
+
+struct PickResult
+{
+    int requestId;   // 对应 pick 请求的 ID
+    bool hit;        // 是否选中了对象
+    QString pathInfo; // 示例：把 path 写成字符串（或文件）等
+};
+
+class PickResultManager : public QObject
+{
+    Q_OBJECT
+public:
+    // 构造函数可以是普通的，也可做成单例
+    explicit PickResultManager(QObject* parent = nullptr);
+
+public slots:
+    // 用于接收 pick 完成后的信号
+    void onPickDone(const PickResult& result);
+
+signals:
+    // 如果需要进一步往外部发信号，可以声明更多
+    // void somethingChanged(...);
+};
+
+class MyPickTask : public QObject, public QRunnable
+{
+    Q_OBJECT
+public:
+    explicit MyPickTask(const PickRequest& req);
+
+    // QRunnable interface
+    void run() override;
+
+signals:
+    // 把 pick 的结果通过信号发送回主线程
+    void pickDone(const PickResult& result);
+
+private:
+    PickRequest request;
+};
+

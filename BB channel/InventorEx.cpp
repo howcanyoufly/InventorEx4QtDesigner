@@ -79,6 +79,8 @@
 
 #include "utils.h"
 
+#include "QThreadPool"
+
 
 #define CREATE_NODE(type, name) \
     type* name = new type; \
@@ -184,14 +186,16 @@ InventorEx::InventorEx(int argc, char** argv)
         {"getWorldToScreenScale", std::bind(&InventorEx::getWorldToScreenScale, this)},
         {"dynamicCSYS", std::bind(&InventorEx::dynamicCSYS, this)},
         // plugin
-        {"_loadPickAndWrite", std::bind(&InventorEx::loadPickAndWrite, this)},
+        {"_loadPickAndWrite1", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
         {"_loadGLCallback", std::bind(&InventorEx::loadGLCallback, this)},
         {"_loadBackground", std::bind(&InventorEx::loadBackground, this)},
+        {"_loadPickAndWrite2", std::bind(&InventorEx::loadPickAndWrite2, this)},
     };
 
     m_delayedLoadNames = {
-        "_loadPickAndWrite"
+        "_loadPickAndWrite",
+        "_loadPickAndWrite2"
     };
 
     m_app = new QApplication(argc, argv);
@@ -6650,4 +6654,151 @@ void InventorEx::dynamicCSYS()
     m_root->addChild(root);
 }
 
+std::atomic<int> gLatestRequestId;
 
+PickResultManager::PickResultManager(QObject* parent)
+    : QObject(parent)
+{
+    // ...
+}
+
+void PickResultManager::onPickDone(const PickResult& result)
+{
+    // 这里可以做任何后续操作，比如：
+    // 1) 调用某个 InventorEx 的普通方法： 
+    //    inventorEx->highlightPickedObject(result);
+    // 2) 记录日志，弹UI提示等
+    int i = 1345;
+    i++;
+}
+
+MyPickTask::MyPickTask(const PickRequest& req)
+    : QObject(nullptr)
+    , request(req)
+{
+    // 让 Qt 不自动删除 QRunnable 对象(!!)：
+    // 因为要用 signals/slots，一般最好禁用自动删除
+    // （否则 run() 结束后对象立即被释放，信号可能还没来得及发出/处理）
+    setAutoDelete(false);
+}
+
+void MyPickTask::run()
+{
+    PickResult result;
+    result.requestId = request.requestId;
+    result.hit = false;
+    result.pathInfo.clear();
+
+    if (!request.root) {
+        emit pickDone(result);
+        return;
+    }
+
+    // 1) 读锁
+    SoDB::readlock();
+
+    // 2) 构造pick
+    SoRayPickAction pickAction(request.viewport);
+    pickAction.setPoint(request.cursorPosition);
+    pickAction.setRadius(8.0f);
+
+    // [测试耗时] 假设sleep 10秒，看看是否卡主线程
+    //Sleep(10000);
+    //QThread::sleep(10);
+
+    // 3) apply
+    pickAction.apply(request.root);
+
+    // 4) 获取结果
+    const SoPickedPoint* pp = pickAction.getPickedPoint();
+    if (pp) {
+        result.hit = true;
+
+        // 演示：用 SoWriteAction 把路径写到内存或文件
+        // 这里写到一个文件做示范
+        SoWriteAction wra;
+        wra.getOutput()->openFile("C:/temp/pickPoint.iv");
+        wra.getOutput()->setBinary(FALSE);
+        wra.apply(pp->getPath());
+        wra.getOutput()->closeFile();
+
+        // 也可以把结果存到 result.pathInfo
+        result.pathInfo = QString("Picked path has been written to C:/temp/pickPoint.iv");
+    }
+    else {
+        result.hit = false;
+        result.pathInfo = QString("No object picked.");
+    }
+
+    // 5) 解锁
+    SoDB::readunlock();
+
+    // 6) 发信号
+    int currentLatest = gLatestRequestId.load();
+    if (request.requestId < currentLatest) {
+        // 说明已经出现了更新的请求
+        // 就不再 emit pickDone
+        this->deleteLater();
+        return;
+    }
+    emit pickDone(result);
+
+    // 因为 setAutoDelete(false)，此时 run() 结束后对象不会自动销毁
+    // 可以在发完信号后自杀：
+    this->deleteLater();
+}
+
+static PickResultManager gPickManager;
+
+void mouseReleaseCB(void* userData, SoEventCallback* eventCB)
+{
+    // 这里 userData 可以是 root 也可以是别的
+    SoSeparator* root = static_cast<SoSeparator*>(userData);
+    if (!root) return;
+
+    const SoEvent* event = eventCB->getEvent();
+    if (SO_MOUSE_RELEASE_EVENT(event, ANY))
+    {
+        const SbViewportRegion& region = eventCB->getAction()->getViewportRegion();
+        SbVec2s pos = event->getPosition(region);
+
+        static int globalPickID = 0;
+        PickRequest req;
+        req.root = root;
+        req.viewport = region;
+        req.cursorPosition = pos;
+        req.requestId = ++globalPickID;
+        gLatestRequestId.store(req.requestId);
+
+        // 生成任务
+        MyPickTask* task = new MyPickTask(req);
+        // 连接信号到 gPickManager
+        //QObject::connect(task, &MyPickTask::pickDone,
+        //                 &gPickManager, &PickResultManager::onPickDone,
+        //                 Qt::QueuedConnection);
+
+        QObject::connect(task, &MyPickTask::pickDone,
+                         &gPickManager, &PickResultManager::onPickDone,
+                         Qt::DirectConnection);
+
+        // 提交线程池
+        QThreadPool::globalInstance()->start(task);
+
+        // 如果想阻止Coin对事件的进一步处理，可以 eventCB->setHandled();
+    }
+}
+
+void InventorEx::loadPickAndWrite2()
+{
+    // 1) 创建 SoEventCallback
+    SoEventCallback* eventCB = new SoEventCallback;
+    m_root->addChild(eventCB);
+
+    // 2) 给它添加回调
+    //    第三个参数 userData 塞 m_root 或其它你想传递的数据
+    eventCB->addEventCallback(
+        SoMouseButtonEvent::getClassTypeId(),
+        mouseReleaseCB,
+        m_root  // userData
+    );
+}
