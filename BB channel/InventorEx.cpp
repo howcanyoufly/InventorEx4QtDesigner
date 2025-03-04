@@ -80,6 +80,7 @@
 #include "utils.h"
 
 #include "QThreadPool"
+#include "Inventor/events/SoLocation2Event.h"
 
 
 #define CREATE_NODE(type, name) \
@@ -185,6 +186,7 @@ InventorEx::InventorEx(int argc, char** argv)
         {"section", std::bind(&InventorEx::section, this)},
         {"getWorldToScreenScale", std::bind(&InventorEx::getWorldToScreenScale, this)},
         {"dynamicCSYS", std::bind(&InventorEx::dynamicCSYS, this)},
+        {"meshRect", std::bind(&InventorEx::meshRect, this)},
         // plugin
         {"_loadPickAndWrite1", std::bind(&InventorEx::loadPickAndWrite, this)},
         {"_loadErrorHandle", std::bind(&InventorEx::loadErrorHandle, this)},
@@ -209,6 +211,7 @@ InventorEx::InventorEx(int argc, char** argv)
     SoSwitchToChild::initClass();
     SoDeferredRender::initClass();
     SoZoomAdaptor::initClass();
+    qRegisterMetaType<PickResult>("PickResult");
 
     m_mainwin = new QMainWindow();
     m_mainwin->resize(WINDOWWIDTH, WINDOWHEIGHT);
@@ -4269,6 +4272,8 @@ void InventorEx::performance()
     }
     bodies->renderCaching = SoSeparator::ON;
     //m_root->renderCaching = SoSeparator::OFF;
+
+    //SoNode* copy = m_root->copy();
 }
 
 SoSeparator* InventorEx::assembleSingleBodyScene(const std::vector<ShapeData>& cuboids) {
@@ -6700,7 +6705,7 @@ void MyPickTask::run()
     // 2) 构造pick
     SoRayPickAction pickAction(request.viewport);
     pickAction.setPoint(request.cursorPosition);
-    pickAction.setRadius(8.0f);
+    pickAction.setRadius(30.0f);
 
     // [测试耗时] 假设sleep 10秒，看看是否卡主线程
     //Sleep(10000);
@@ -6716,11 +6721,11 @@ void MyPickTask::run()
 
         // 演示：用 SoWriteAction 把路径写到内存或文件
         // 这里写到一个文件做示范
-        SoWriteAction wra;
-        wra.getOutput()->openFile("C:/temp/pickPoint.iv");
-        wra.getOutput()->setBinary(FALSE);
-        wra.apply(pp->getPath());
-        wra.getOutput()->closeFile();
+        //SoWriteAction wra;
+        //wra.getOutput()->openFile("C:/temp/pickPoint.iv");
+        //wra.getOutput()->setBinary(FALSE);
+        //wra.apply(pp->getPath());
+        //wra.getOutput()->closeFile();
 
         // 也可以把结果存到 result.pathInfo
         result.pathInfo = QString("Picked path has been written to C:/temp/pickPoint.iv");
@@ -6735,12 +6740,12 @@ void MyPickTask::run()
 
     // 6) 发信号
     int currentLatest = gLatestRequestId.load();
-    if (request.requestId < currentLatest) {
-        // 说明已经出现了更新的请求
-        // 就不再 emit pickDone
-        this->deleteLater();
-        return;
-    }
+    //if (request.requestId < currentLatest) {
+    //    // 说明已经出现了更新的请求
+    //    // 就不再 emit pickDone
+    //    this->deleteLater();
+    //    return;
+    //}
     emit pickDone(result);
 
     // 因为 setAutoDelete(false)，此时 run() 结束后对象不会自动销毁
@@ -6757,7 +6762,8 @@ void mouseReleaseCB(void* userData, SoEventCallback* eventCB)
     if (!root) return;
 
     const SoEvent* event = eventCB->getEvent();
-    if (SO_MOUSE_RELEASE_EVENT(event, ANY))
+    const SoLocation2Event* location2Event = dynamic_cast<const SoLocation2Event*>(event);
+    if (/*SO_MOUSE_RELEASE_EVENT(event, ANY)*/location2Event)
     {
         const SbViewportRegion& region = eventCB->getAction()->getViewportRegion();
         SbVec2s pos = event->getPosition(region);
@@ -6773,13 +6779,9 @@ void mouseReleaseCB(void* userData, SoEventCallback* eventCB)
         // 生成任务
         MyPickTask* task = new MyPickTask(req);
         // 连接信号到 gPickManager
-        //QObject::connect(task, &MyPickTask::pickDone,
-        //                 &gPickManager, &PickResultManager::onPickDone,
-        //                 Qt::QueuedConnection);
-
         QObject::connect(task, &MyPickTask::pickDone,
                          &gPickManager, &PickResultManager::onPickDone,
-                         Qt::DirectConnection);
+                         Qt::QueuedConnection/*DirectConnection*/);
 
         // 提交线程池
         QThreadPool::globalInstance()->start(task);
@@ -6796,9 +6798,731 @@ void InventorEx::loadPickAndWrite2()
 
     // 2) 给它添加回调
     //    第三个参数 userData 塞 m_root 或其它你想传递的数据
+    //eventCB->addEventCallback(
+    //    SoMouseButtonEvent::getClassTypeId(),
+    //    mouseReleaseCB,
+    //    m_root  // userData
+    //);
     eventCB->addEventCallback(
-        SoMouseButtonEvent::getClassTypeId(),
+        SoLocation2Event::getClassTypeId(),
         mouseReleaseCB,
         m_root  // userData
     );
+}
+
+#include <Inventor/SoDB.h>
+#include <Inventor/nodes/SoSeparator.h>
+#include <Inventor/nodes/SoMaterial.h>
+#include <Inventor/nodes/SoCoordinate3.h>
+#include <Inventor/nodes/SoFaceSet.h>
+#include <Inventor/nodes/SoPolygonOffset.h>
+#include <Inventor/nodes/SoDrawStyle.h>
+#include <Inventor/nodes/SoLineSet.h>
+#include <Inventor/nodes/SoLightModel.h>
+#include <Inventor/SbColor.h>
+#include <Inventor/SbVec3f.h>
+#include <cmath>
+
+#include <Inventor/nodes/SoCoordinate3.h>
+#include <Inventor/nodes/SoDrawStyle.h>
+#include <Inventor/nodes/SoFaceSet.h>
+#include <Inventor/nodes/SoIndexedLineSet.h>
+#include <Inventor/nodes/SoLineSet.h>
+#include <Inventor/nodes/SoMaterial.h>
+#include <Inventor/nodes/SoPolygonOffset.h>
+#include <Inventor/nodes/SoSeparator.h>
+#include <Inventor/nodes/SoShapeHints.h>
+#include <Inventor/nodes/SoText3.h>
+#include <Inventor/nodes/SoTransform.h>
+#include <Inventor/nodes/SoTranslation.h>
+#include <Inventor/SbColor.h>
+#include <Inventor/SbVec3f.h>
+
+// 构造网格平面节点树
+// 输入参数：
+//    length, width：网格整体尺寸（XY 平面，从原点开始）
+//    borderWidth：内部边框宽度
+SoSeparator* CreateGridPlane(float length, float width, float borderWidth)
+{
+    SoSeparator* root = new SoSeparator();
+
+    // ---------------------------
+    // 1. 内部网格线（10行10列，绘制内部9条竖直和9条水平线）
+    // ---------------------------
+    SoSeparator* gridLinesSep = new SoSeparator();
+
+    // 固定颜色 #D3D6DB
+    SbColor gridLineColor(0xD3 / 255.0f, 0xD6 / 255.0f, 0xDB / 255.0f);
+    SoMaterial* gridLineMat = new SoMaterial();
+    gridLineMat->diffuseColor.setValue(gridLineColor);
+    gridLinesSep->addChild(gridLineMat);
+
+    SoDrawStyle* gridLineDrawStyle = new SoDrawStyle();
+    gridLineDrawStyle->lineWidth = 1;
+    gridLinesSep->addChild(gridLineDrawStyle);
+
+    // 计算每个格子的尺寸
+    float cellWidth = length / 10.0f;
+    float cellHeight = width / 10.0f;
+
+    // 绘制内部竖直网格线（i = 1 ~ 9）
+    for (int i = 1; i < 10; i++)
+    {
+        float x = i * cellWidth;
+        SoSeparator* vLineSep = new SoSeparator();
+        SoCoordinate3* vCoord = new SoCoordinate3();
+        vCoord->point.set1Value(0, SbVec3f(x, 0.0f, 0.0f));
+        vCoord->point.set1Value(1, SbVec3f(x, width, 0.0f));
+        vLineSep->addChild(vCoord);
+        SoLineSet* vLine = new SoLineSet();
+        vLineSep->addChild(vLine);
+        gridLinesSep->addChild(vLineSep);
+    }
+
+    // 绘制内部水平网格线（j = 1 ~ 9）
+    for (int j = 1; j < 10; j++)
+    {
+        float y = j * cellHeight;
+        SoSeparator* hLineSep = new SoSeparator();
+        SoCoordinate3* hCoord = new SoCoordinate3();
+        hCoord->point.set1Value(0, SbVec3f(0.0f, y, 0.0f));
+        hCoord->point.set1Value(1, SbVec3f(length, y, 0.0f));
+        hLineSep->addChild(hCoord);
+        SoLineSet* hLine = new SoLineSet();
+        hLineSep->addChild(hLine);
+        gridLinesSep->addChild(hLineSep);
+    }
+
+    root->addChild(gridLinesSep);
+
+    // ---------------------------
+    // 2. 内部边框（用面绘制，不与网格线重合）
+    //    颜色固定 #237FE8，不透明度20%（即透明度 0.8），开启双面光照
+    // ---------------------------
+    SoSeparator* borderSep = new SoSeparator();
+
+    SbColor borderColor(0x23 / 255.0f, 0x7F / 255.0f, 0xE8 / 255.0f);
+    SoMaterial* borderMat = new SoMaterial();
+    borderMat->diffuseColor.setValue(borderColor);
+    // 设置透明度：20%不透明，即 80% 透明
+    borderMat->transparency.setValue(0.8f);
+    borderSep->addChild(borderMat);
+
+    // 开启双面光照，使用 SoShapeHints（顶点顺序设为 COUNTERCLOCKWISE）
+    SoShapeHints* shapeHints = new SoShapeHints;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    borderSep->addChild(shapeHints);
+
+    // 使用 PolygonOffset 确保边框面能遮挡网格线
+    SoPolygonOffset* po = new SoPolygonOffset();
+    po->factor = -1.0f;
+    po->units = -1.0f;
+    borderSep->addChild(po);
+
+    SoSeparator* borderGeomSep = new SoSeparator();
+
+    // 下边框面：从 (0,0) 到 (length,0)，高度 borderWidth
+    {
+        SoCoordinate3* bottomCoords = new SoCoordinate3();
+        SbVec3f pts[4] = {
+            SbVec3f(0.0f, 0.0f, 0.0f),
+            SbVec3f(length, 0.0f, 0.0f),
+            SbVec3f(length, borderWidth, 0.0f),
+            SbVec3f(0.0f, borderWidth, 0.0f)
+        };
+        bottomCoords->point.setValues(0, 4, pts);
+        borderGeomSep->addChild(bottomCoords);
+        SoFaceSet* bottomFace = new SoFaceSet();
+        bottomFace->numVertices.set1Value(0, 4);
+        borderGeomSep->addChild(bottomFace);
+    }
+
+    // 上边框面：从 (0, width - borderWidth) 到 (length, width)
+    {
+        SoCoordinate3* topCoords = new SoCoordinate3();
+        SbVec3f pts[4] = {
+            SbVec3f(0.0f, width - borderWidth, 0.0f),
+            SbVec3f(length, width - borderWidth, 0.0f),
+            SbVec3f(length, width, 0.0f),
+            SbVec3f(0.0f, width, 0.0f)
+        };
+        topCoords->point.setValues(0, 4, pts);
+        borderGeomSep->addChild(topCoords);
+        SoFaceSet* topFace = new SoFaceSet();
+        topFace->numVertices.set1Value(0, 4);
+        borderGeomSep->addChild(topFace);
+    }
+
+    // 左边框面：从 (0, borderWidth) 到 (borderWidth, width - borderWidth)
+    {
+        SoCoordinate3* leftCoords = new SoCoordinate3();
+        SbVec3f pts[4] = {
+            SbVec3f(0.0f, borderWidth, 0.0f),
+            SbVec3f(borderWidth, borderWidth, 0.0f),
+            SbVec3f(borderWidth, width - borderWidth, 0.0f),
+            SbVec3f(0.0f, width - borderWidth, 0.0f)
+        };
+        leftCoords->point.setValues(0, 4, pts);
+        borderGeomSep->addChild(leftCoords);
+        SoFaceSet* leftFace = new SoFaceSet();
+        leftFace->numVertices.set1Value(0, 4);
+        borderGeomSep->addChild(leftFace);
+    }
+
+    // 右边框面：从 (length - borderWidth, borderWidth) 到 (length, width - borderWidth)
+    {
+        SoCoordinate3* rightCoords = new SoCoordinate3();
+        SbVec3f pts[4] = {
+            SbVec3f(length - borderWidth, borderWidth, 0.0f),
+            SbVec3f(length, borderWidth, 0.0f),
+            SbVec3f(length, width - borderWidth, 0.0f),
+            SbVec3f(length - borderWidth, width - borderWidth, 0.0f)
+        };
+        rightCoords->point.setValues(0, 4, pts);
+        borderGeomSep->addChild(rightCoords);
+        SoFaceSet* rightFace = new SoFaceSet();
+        rightFace->numVertices.set1Value(0, 4);
+        borderGeomSep->addChild(rightFace);
+    }
+
+    borderSep->addChild(borderGeomSep);
+    root->addChild(borderSep);
+
+    // ---------------------------
+    // 3. 外部边框（整个网格外框，线宽 1px，颜色 #237FE8，不透明度50%）
+    // ---------------------------
+    SoSeparator* outerBorderSep = new SoSeparator();
+
+    SoMaterial* outerBorderMat = new SoMaterial();
+    // 同样颜色 #237FE8
+    outerBorderMat->diffuseColor.setValue(borderColor);
+    // 50% 不透明，即透明度 0.5
+    outerBorderMat->transparency.setValue(0.5f);
+    outerBorderSep->addChild(outerBorderMat);
+
+    SoDrawStyle* outerBorderDrawStyle = new SoDrawStyle();
+    outerBorderDrawStyle->lineWidth = 1;
+    outerBorderSep->addChild(outerBorderDrawStyle);
+
+    SoCoordinate3* outerBorderCoords = new SoCoordinate3();
+    // 外框顶点：从 (0,0) -> (length,0) -> (length,width) -> (0,width) 并闭合
+    SbVec3f outerPts[5] = {
+        SbVec3f(0.0f, 0.0f, 0.0f),
+        SbVec3f(length, 0.0f, 0.0f),
+        SbVec3f(length, width, 0.0f),
+        SbVec3f(0.0f, width, 0.0f),
+        SbVec3f(0.0f, 0.0f, 0.0f)
+    };
+    outerBorderCoords->point.setValues(0, 5, outerPts);
+    outerBorderSep->addChild(outerBorderCoords);
+    SoLineSet* outerBorderLineSet = new SoLineSet();
+    outerBorderSep->addChild(outerBorderLineSet);
+
+    root->addChild(outerBorderSep);
+
+    return root;
+}
+
+SoSeparator* CreateMeshAnnotations(float length, float width, float borderWidth)
+{
+    const float ArrowHeight = 24.0f;
+    const float ArrowBottom = 6.0f;
+    const float BoundaryLineLenth = 40.0f;
+    const float BoxWidth = 68.0f;
+    const float BoxHeight = 28.0f;
+    const float TextSize = 12.0f;
+    const float MinLineLen = 6.0f;
+    const float ArrowMinus = 4.0f;
+    const float ArrowPos = BoundaryLineLenth - ArrowMinus;
+
+    SoSeparator* annotationRoot = new SoSeparator();
+
+    SoMaterial* mat = new SoMaterial;
+    mat->diffuseColor.setValue(SbColor(0x2C / 255.0f, 0x30 / 255.0f, 0x39 / 255.0f));
+    annotationRoot->addChild(mat);
+
+    // ---------------------------
+    // Prepare Ref Element
+    // ---------------------------
+    // 1 Arrow
+    SoSeparator* arrow = new SoSeparator();
+
+    SoShapeHints* shapeHints = new SoShapeHints;
+    shapeHints->vertexOrdering = SoShapeHints::COUNTERCLOCKWISE;
+    shapeHints->shapeType = SoShapeHints::UNKNOWN_SHAPE_TYPE;
+    arrow->addChild(shapeHints);
+
+    SoLightModel* baseColor = new SoLightModel;
+    baseColor->model = SoLightModel::BASE_COLOR;
+    arrow->addChild(baseColor);
+
+    // 指向X-的箭头
+    SoCoordinate3* arrowCoord = new SoCoordinate3;
+    arrowCoord->point.set1Value(0, SbVec3f(0.0f, -ArrowBottom / 2.0f, 0.0f));
+    arrowCoord->point.set1Value(1, SbVec3f(0.0f, ArrowBottom / 2.0f, 0.0f));
+    arrowCoord->point.set1Value(2, SbVec3f(-ArrowHeight, 0.0f, 0.0f));
+    arrow->addChild(arrowCoord);
+
+    SoFaceSet* arrowFace = new SoFaceSet;
+    arrowFace->numVertices.set1Value(0, 3);
+    arrow->addChild(arrowFace);
+
+    // 2 BoundaryLine
+    SoSeparator* boundaryLine = new SoSeparator();
+
+    SoDrawStyle* drawStyle = new SoDrawStyle;
+    drawStyle->lineWidth = 1.0f;
+
+    boundaryLine->addChild(drawStyle);
+
+    // 与Y轴水平的尺寸界线
+    SoCoordinate3* boundaryLineCoord = new SoCoordinate3;
+    boundaryLineCoord->point.set1Value(0, SbVec3f(0.0f, 0.0f, 0.0f));
+    boundaryLineCoord->point.set1Value(1, SbVec3f(0.0f, -BoundaryLineLenth, 0.0f));
+    boundaryLine->addChild(boundaryLineCoord);
+    boundaryLine->addChild(new SoLineSet);
+
+    // ---------------------------
+    //  3.InputBox
+    // ---------------------------
+    SoSeparator* inputBox = new SoSeparator();
+
+    inputBox->addChild(shapeHints);
+    inputBox->addChild(baseColor);
+
+    // 绘制背景面（白色）
+    SoMaterial* bgMat = new SoMaterial;
+    bgMat->diffuseColor.setValue(1.0f, 1.0f, 1.0f);
+    inputBox->addChild(bgMat);
+
+    inputBox->addChild(new SoPolygonOffset);
+
+    SoCoordinate3* boxCoord = new SoCoordinate3;
+    // 中心在原点，以Y轴为水平方向
+    float halfW = BoxWidth / 2.0f;
+    float halfH = BoxHeight / 2.0f;
+    boxCoord->point.setValues(0, 4, new SbVec3f[4]{
+        SbVec3f(-halfH, -halfW, 0.0f),
+        SbVec3f(halfH, -halfW, 0.0f),
+        SbVec3f(halfH, halfW, 0.0f),
+        SbVec3f(-halfH, halfW, 0.0f)
+                              });
+    inputBox->addChild(boxCoord);
+
+    SoFaceSet* boxFace = new SoFaceSet;
+    boxFace->numVertices.set1Value(0, 4);
+    inputBox->addChild(boxFace);
+
+    SbColor borderCol(0xD3 / 255.0f, 0xD6 / 255.0f, 0xDB / 255.0f);
+    SoMaterial* borderMat = new SoMaterial;
+    borderMat->diffuseColor.setValue(borderCol);
+    inputBox->addChild(borderMat);
+
+    inputBox->addChild(drawStyle);
+
+    SoIndexedLineSet* borderLS = new SoIndexedLineSet;
+    borderLS->coordIndex.setValues(0, 6, new int[6] {
+        0, 1, 2, 3, 0, -1
+                                   });
+    inputBox->addChild(borderLS);
+
+
+    // Bottom Annotation
+    SoSeparator* bottomAnnotation = new SoSeparator;
+
+    // 1 尺寸界线
+    bottomAnnotation->addChild(boundaryLine);
+
+    // 2 箭头
+    SoSeparator* arrowRoot2 = new SoSeparator;
+
+    SoTranslation* translation2 = new SoTranslation;
+    translation2->translation.setValue(ArrowHeight, -ArrowPos, 0);
+    arrowRoot2->addChild(translation2);
+    arrowRoot2->addChild(arrow);
+
+    bottomAnnotation->addChild(arrowRoot2);
+
+    // 3 尺寸线
+    SoSeparator* dimensionLine = new SoSeparator;
+
+    SoCoordinate3* dimensionLineCoord = new SoCoordinate3;
+    float bootomAnnotationLineLength = (length - ArrowHeight * 2.0f - BoxHeight) / 2.0f;
+    dimensionLineCoord->point.set1Value(0, SbVec3f(ArrowHeight, -ArrowPos, 0.0f));
+    dimensionLineCoord->point.set1Value(1, SbVec3f(ArrowHeight + bootomAnnotationLineLength, -ArrowPos, 0.0f));
+    dimensionLine->addChild(dimensionLineCoord);
+    dimensionLine->addChild(new SoLineSet);
+
+    bottomAnnotation->addChild(dimensionLine);
+
+    // 4 输入框
+    SoSeparator* boxRoot4 = new SoSeparator;
+
+    SoTranslation* translation4 = new SoTranslation;
+    translation4->translation.setValue(length / 2.0f, -ArrowPos, 0);
+    boxRoot4->addChild(translation4);
+    boxRoot4->addChild(inputBox);
+
+    // 文本
+    SoMaterial* textMat = new SoMaterial;
+    textMat->diffuseColor.setValue(SbColor(0xB9 / 255.0f, 0xBD / 255.0f, 0xC4 / 255.0f));
+    SoFont* font = new SoFont;
+    font->size = TextSize;
+    SoTransform* textXform = new SoTransform;
+    textXform->translation.setValue(TextSize / 3.0f, 0.0f, 0.0f);
+    textXform->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(M_PI_2));
+    SoText3* textBottom = new SoText3;
+    textBottom->justification = SoText3::CENTER;
+    textBottom->string.setValue((std::to_string((int)length).c_str()));
+
+    boxRoot4->addChild(textXform);
+    boxRoot4->addChild(textMat);
+    boxRoot4->addChild(font);
+    boxRoot4->addChild(textBottom);
+
+    bottomAnnotation->addChild(boxRoot4);
+
+    // 5 尺寸线
+    SoSeparator* dimensionLineRoot5 = new SoSeparator;
+
+    SoTranslation* translation5 = new SoTranslation;
+    translation5->translation.setValue(bootomAnnotationLineLength + BoxHeight, 0, 0);
+    dimensionLineRoot5->addChild(translation5);
+    dimensionLineRoot5->addChild(dimensionLine);
+
+    bottomAnnotation->addChild(dimensionLineRoot5);
+
+    // 6 箭头
+    SoSeparator* arrowRoot6 = new SoSeparator;
+
+    SoRotation* rotation6 = new SoRotation;
+    rotation6->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(M_PI));
+    SoTranslation* translation6 = new SoTranslation;
+    translation6->translation.setValue(length - ArrowHeight, -ArrowPos, 0);
+    arrowRoot6->addChild(translation6);
+    arrowRoot6->addChild(rotation6);
+    arrowRoot6->addChild(arrow);
+
+    bottomAnnotation->addChild(arrowRoot6);
+
+    // 7 尺寸界线
+    SoSeparator* boundaryLineRoot7 = new SoSeparator;
+
+    SoTranslation* translation7 = new SoTranslation;
+    translation7->translation.setValue(length, 0, 0);
+    boundaryLineRoot7->addChild(translation7);
+    boundaryLineRoot7->addChild(boundaryLine);
+
+    bottomAnnotation->addChild(boundaryLineRoot7);
+
+
+    // Right Annotation
+    SoSeparator* rightAnnotation = new SoSeparator;
+
+    // 8 尺寸界线
+    SoSeparator* boundaryLineRoot8 = new SoSeparator;
+
+    SoRotation* rotation8 = new SoRotation;
+    rotation8->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(M_PI_2));
+    SoTranslation* translation8 = new SoTranslation;
+    translation8->translation.setValue(length, 0, 0);
+    boundaryLineRoot8->addChild(translation8);
+    boundaryLineRoot8->addChild(rotation8);
+    boundaryLineRoot8->addChild(boundaryLine);
+
+    rightAnnotation->addChild(boundaryLineRoot8);
+
+    // 9 箭头
+    SoSeparator* arrowRoot9 = new SoSeparator;
+
+    SoRotation* rotation9 = new SoRotation;
+    rotation9->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(M_PI_2));
+    SoTranslation* translation9 = new SoTranslation;
+    translation9->translation.setValue(length + ArrowPos, ArrowHeight, 0);
+    arrowRoot9->addChild(translation9);
+    arrowRoot9->addChild(rotation9);
+    arrowRoot9->addChild(arrow);
+
+    rightAnnotation->addChild(arrowRoot9);
+
+    // 10 尺寸线
+    SoSeparator* dimensionLineRoot10 = new SoSeparator;
+
+    SoCoordinate3* dimensionLineCoord10 = new SoCoordinate3;
+    float rightAnnotationLineLength = (width - ArrowHeight * 2.0f - BoxWidth) / 2.0f;
+    dimensionLineCoord10->point.set1Value(0, SbVec3f(length + ArrowPos, ArrowHeight, 0.0f));
+    dimensionLineCoord10->point.set1Value(1, SbVec3f(length + ArrowPos, ArrowHeight + rightAnnotationLineLength, 0.0f));
+    dimensionLineRoot10->addChild(dimensionLineCoord10);
+    dimensionLineRoot10->addChild(new SoLineSet);
+
+    rightAnnotation->addChild(dimensionLineRoot10);
+
+    // 11 输入框
+    SoSeparator* boxRoot11 = new SoSeparator;
+
+    SoTranslation* translation11 = new SoTranslation;
+    translation11->translation.setValue(length + ArrowPos, width / 2.0f, 0);
+    boxRoot11->addChild(translation11);
+    boxRoot11->addChild(inputBox);
+
+    // 文本
+    SoText3* textRight = new SoText3;
+    textRight->justification = SoText3::CENTER;
+    textRight->string.setValue((std::to_string((int)width).c_str()));
+
+    boxRoot11->addChild(textXform);
+    boxRoot11->addChild(textMat);
+    boxRoot11->addChild(font);
+    boxRoot11->addChild(textRight);
+
+    rightAnnotation->addChild(boxRoot11);
+
+    // 12 尺寸线
+    SoSeparator* dimensionLineRoot12 = new SoSeparator;
+
+    SoTranslation* translation12 = new SoTranslation;
+    translation12->translation.setValue(0, rightAnnotationLineLength + BoxWidth, 0);
+    dimensionLineRoot12->addChild(translation12);
+    dimensionLineRoot12->addChild(dimensionLineRoot10);
+
+    rightAnnotation->addChild(dimensionLineRoot12);
+
+    // 13 箭头
+    SoSeparator* arrowRoot13 = new SoSeparator;
+
+    SoRotation* rotation13 = new SoRotation;
+    rotation13->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(-M_PI_2));
+    SoTranslation* translation13 = new SoTranslation;
+    translation13->translation.setValue(length + ArrowPos, width - ArrowHeight, 0);
+    arrowRoot13->addChild(translation13);
+    arrowRoot13->addChild(rotation13);
+    arrowRoot13->addChild(arrow);
+
+    rightAnnotation->addChild(arrowRoot13);
+
+    // 14 尺寸界线
+    SoSeparator* boundaryLineRoot14 = new SoSeparator;
+
+    SoTranslation* translation14 = new SoTranslation;
+    translation14->translation.setValue(0, width, 0);
+    boundaryLineRoot14->addChild(translation14);
+    boundaryLineRoot14->addChild(boundaryLineRoot8);
+
+    rightAnnotation->addChild(boundaryLineRoot14);
+
+
+    // Border Annotation
+    SoSeparator* borderAnnotation = new SoSeparator;
+    bool borderInternal = (borderWidth >= (2 * ArrowHeight + 2 * MinLineLen + BoxWidth));
+    if (borderInternal)
+    {
+        // 15 尺寸界线
+        SoSeparator* boundaryLineRoot15 = new SoSeparator;
+
+        SoRotation* rotation15 = new SoRotation;
+        rotation15->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(-M_PI_2));
+        SoTranslation* translation15 = new SoTranslation;
+        translation15->translation.setValue(0, width - borderWidth, 0);
+        boundaryLineRoot15->addChild(translation15);
+        boundaryLineRoot15->addChild(rotation15);
+        boundaryLineRoot15->addChild(boundaryLine);
+
+        borderAnnotation->addChild(boundaryLineRoot15);
+
+        // 16 箭头
+        SoSeparator* arrowRoot16 = new SoSeparator;
+
+        SoRotation* rotation16 = new SoRotation;
+        rotation16->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(M_PI_2));
+        SoTranslation* translation16 = new SoTranslation;
+        translation16->translation.setValue(-ArrowPos, width - borderWidth + ArrowHeight, 0);
+        arrowRoot16->addChild(translation16);
+        arrowRoot16->addChild(rotation16);
+        arrowRoot16->addChild(arrow);
+
+        borderAnnotation->addChild(arrowRoot16);
+
+        // 17 尺寸线
+        SoSeparator* dimensionLineRoot17 = new SoSeparator;
+
+        SoCoordinate3* dimensionLineCoord17 = new SoCoordinate3;
+        float borderAnnotationLineLength = (borderWidth - ArrowHeight * 2.0f - BoxWidth) / 2.0f;
+        dimensionLineCoord17->point.set1Value(0, SbVec3f(-ArrowPos, width - borderWidth + ArrowHeight, 0.0f));
+        dimensionLineCoord17->point.set1Value(1, SbVec3f(-ArrowPos, width - borderWidth + ArrowHeight + borderAnnotationLineLength, 0.0f));
+        dimensionLineRoot17->addChild(dimensionLineCoord17);
+        dimensionLineRoot17->addChild(new SoLineSet);
+
+        borderAnnotation->addChild(dimensionLineRoot17);
+
+        // 18 输入框
+        SoSeparator* boxRoot18 = new SoSeparator;
+
+        SoTranslation* translation18 = new SoTranslation;
+        translation18->translation.setValue(-ArrowPos, width - borderWidth / 2.0f, 0);
+        boxRoot18->addChild(translation18);
+        boxRoot18->addChild(inputBox);
+
+        // 文本
+        SoText3* textBorder = new SoText3;
+        textBorder->justification = SoText3::CENTER;
+        textBorder->string.setValue((std::to_string((int)borderWidth).c_str()));
+
+        boxRoot18->addChild(textXform);
+        boxRoot18->addChild(textMat);
+        boxRoot18->addChild(font);
+        boxRoot18->addChild(textRight);
+
+        borderAnnotation->addChild(boxRoot18);
+
+        // 19 尺寸线
+        SoSeparator* dimensionLineRoot19 = new SoSeparator;
+
+        SoTranslation* translation19 = new SoTranslation;
+        translation19->translation.setValue(0, borderAnnotationLineLength + BoxWidth, 0);
+        dimensionLineRoot19->addChild(translation19);
+        dimensionLineRoot19->addChild(dimensionLineRoot17);
+
+        borderAnnotation->addChild(dimensionLineRoot19);
+
+        // 20 箭头
+        SoSeparator* arrowRoot20 = new SoSeparator;
+
+        SoRotation* rotation20 = new SoRotation;
+        rotation20->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(-M_PI_2));
+        SoTranslation* translation20 = new SoTranslation;
+        translation20->translation.setValue(-ArrowPos, width - ArrowHeight, 0);
+        arrowRoot20->addChild(translation20);
+        arrowRoot20->addChild(rotation20);
+        arrowRoot20->addChild(arrow);
+
+        borderAnnotation->addChild(arrowRoot20);
+
+        // 21 尺寸界线
+        SoSeparator* boundaryLineRoot21 = new SoSeparator;
+
+        SoTranslation* translation21 = new SoTranslation;
+        translation21->translation.setValue(0, borderWidth, 0);
+        boundaryLineRoot21->addChild(translation21);
+        boundaryLineRoot21->addChild(boundaryLineRoot15);
+
+        borderAnnotation->addChild(boundaryLineRoot21);
+    }
+    else
+    {
+        // 15 最短尺寸线
+        SoSeparator* dimensionLineRoot15 = new SoSeparator;
+
+        SoCoordinate3* dimensionLineCoord15 = new SoCoordinate3;
+        dimensionLineCoord15->point.set1Value(0, SbVec3f(-ArrowPos, width - borderWidth - ArrowHeight - MinLineLen, 0.0f));
+        dimensionLineCoord15->point.set1Value(1, SbVec3f(-ArrowPos, width - borderWidth - ArrowHeight, 0.0f));
+        dimensionLineRoot15->addChild(dimensionLineCoord15);
+        dimensionLineRoot15->addChild(new SoLineSet);
+
+        borderAnnotation->addChild(dimensionLineRoot15);
+
+        // 16 箭头
+        SoSeparator* arrowRoot16 = new SoSeparator;
+
+        SoRotation* rotation16 = new SoRotation;
+        rotation16->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(-M_PI_2));
+        SoTranslation* translation16 = new SoTranslation;
+        translation16->translation.setValue(-ArrowPos, width - borderWidth - ArrowHeight, 0);
+        arrowRoot16->addChild(translation16);
+        arrowRoot16->addChild(rotation16);
+        arrowRoot16->addChild(arrow);
+
+        borderAnnotation->addChild(arrowRoot16);
+
+        // 17 尺寸界线
+        SoSeparator* boundaryLineRoot17 = new SoSeparator;
+
+        SoRotation* rotation17 = new SoRotation;
+        rotation17->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(-M_PI_2));
+        SoTranslation* translation17 = new SoTranslation;
+        translation17->translation.setValue(0, width - borderWidth, 0);
+        boundaryLineRoot17->addChild(translation17);
+        boundaryLineRoot17->addChild(rotation17);
+        boundaryLineRoot17->addChild(boundaryLine);
+
+        borderAnnotation->addChild(boundaryLineRoot17);
+
+        // 18 尺寸线
+        SoSeparator* dimensionLineRoot18 = new SoSeparator;
+
+        SoCoordinate3* dimensionLineCoord18 = new SoCoordinate3;
+        dimensionLineCoord18->point.set1Value(0, SbVec3f(-ArrowPos, width - borderWidth, 0.0f));
+        dimensionLineCoord18->point.set1Value(1, SbVec3f(-ArrowPos, width, 0.0f));
+        dimensionLineRoot18->addChild(dimensionLineCoord18);
+        dimensionLineRoot18->addChild(new SoLineSet);
+
+        borderAnnotation->addChild(dimensionLineRoot18);
+
+        // 19 尺寸界线
+        SoSeparator* boundaryLineRoot19 = new SoSeparator;
+
+        SoTranslation* translation19 = new SoTranslation;
+        translation19->translation.setValue(0, borderWidth, 0);
+        boundaryLineRoot19->addChild(translation19);
+        boundaryLineRoot19->addChild(boundaryLineRoot17);
+
+        borderAnnotation->addChild(boundaryLineRoot19);
+
+
+        // 20 箭头
+        SoSeparator* arrowRoot20 = new SoSeparator;
+
+        SoRotation* rotation20 = new SoRotation;
+        rotation20->rotation.setValue(SbVec3f(0, 0, 1), static_cast<float>(M_PI_2));
+        SoTranslation* translation20 = new SoTranslation;
+        translation20->translation.setValue(-ArrowPos, width + ArrowHeight, 0);
+        arrowRoot20->addChild(translation20);
+        arrowRoot20->addChild(rotation20);
+        arrowRoot20->addChild(arrow);
+
+        borderAnnotation->addChild(arrowRoot20);
+
+        // 21 最短尺寸线
+        SoSeparator* dimensionLineRoot21 = new SoSeparator;
+
+        SoCoordinate3* dimensionLineCoord21 = new SoCoordinate3;
+        dimensionLineCoord21->point.set1Value(0, SbVec3f(-ArrowPos, width + ArrowHeight, 0.0f));
+        dimensionLineCoord21->point.set1Value(1, SbVec3f(-ArrowPos, width + ArrowHeight + MinLineLen, 0.0f));
+        dimensionLineRoot21->addChild(dimensionLineCoord21);
+        dimensionLineRoot21->addChild(new SoLineSet);
+
+        borderAnnotation->addChild(dimensionLineRoot21);
+
+        // 22 输入框
+        SoSeparator* boxRoot22 = new SoSeparator;
+
+        SoTranslation* translation22 = new SoTranslation;
+        translation22->translation.setValue(-ArrowPos, width + ArrowHeight + MinLineLen + BoxWidth / 2.0f, 0);
+        boxRoot22->addChild(translation22);
+        boxRoot22->addChild(inputBox);
+
+        // 文本
+        SoText3* textBorder = new SoText3;
+        textBorder->justification = SoText3::CENTER;
+        textBorder->string.setValue((std::to_string((int)borderWidth).c_str()));
+
+        boxRoot22->addChild(textXform);
+        boxRoot22->addChild(textMat);
+        boxRoot22->addChild(font);
+        boxRoot22->addChild(textRight);
+
+        borderAnnotation->addChild(boxRoot22);
+    }
+
+    annotationRoot->addChild(bottomAnnotation);
+    annotationRoot->addChild(rightAnnotation);
+    annotationRoot->addChild(borderAnnotation);
+
+    return annotationRoot;
+}
+
+void InventorEx::meshRect()
+{
+    m_root->addChild(CreateGridPlane(500, 500, 10));
+    m_root->addChild(CreateMeshAnnotations(500, 500, 10));
 }

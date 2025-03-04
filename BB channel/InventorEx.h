@@ -19,6 +19,7 @@
 #include <QtWidgets/QMainWindow>
 
 #include <NavigationWidget.h>
+#include "QMetaType"
 #include "QObject"
 #include "QRunnable"
 
@@ -162,6 +163,7 @@ private:
     // cylinder outline
     void cylinder();
     void cylinderGL();
+    void meshRect();
 
     // plugins
     void loadPickAndWrite();
@@ -238,3 +240,5 @@ private:
     PickRequest request;
 };
 
+
+Q_DECLARE_METATYPE(PickResult)
